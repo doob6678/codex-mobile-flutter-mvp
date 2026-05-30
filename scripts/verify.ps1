@@ -152,7 +152,10 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
                 throw "Protocol summary missing thread/start."
             }
 
-            $codexStatus = Invoke-RestMethod -Uri "$smokeUrl/codex/status" -UseBasicParsing
+            $pairing = Invoke-RestMethod -Method Post -Uri "$smokeUrl/pairing/start" -UseBasicParsing
+            $token = Invoke-RestMethod -Method Post -Uri "$smokeUrl/pairing/complete" -ContentType 'application/json' -Body (@{ code = $pairing.code } | ConvertTo-Json -Compress) -UseBasicParsing
+            $headers = @{ Authorization = "Bearer $($token.accessToken)" }
+            $codexStatus = Invoke-RestMethod -Uri "$smokeUrl/codex/status" -Headers $headers -UseBasicParsing
             if ($null -eq $codexStatus.available -or [string]::IsNullOrWhiteSpace($codexStatus.message)) {
                 throw "Codex app-server status response is malformed."
             }

@@ -6,12 +6,14 @@ namespace CodexMobile.Bridge.Services;
 public sealed class PairingService
 {
     private readonly IClock clock;
+    private readonly DeviceTokenStore tokenStore;
     private readonly object gate = new();
     private readonly Dictionary<string, PairingChallenge> challenges = new(StringComparer.OrdinalIgnoreCase);
 
-    public PairingService(IClock clock)
+    public PairingService(IClock clock, DeviceTokenStore tokenStore)
     {
         this.clock = clock;
+        this.tokenStore = tokenStore;
     }
 
     public PairingChallenge Start(TimeSpan ttl)
@@ -45,6 +47,6 @@ public sealed class PairingService
             throw new InvalidOperationException("Pairing challenge expired.");
         }
 
-        return new PairingToken(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant(), clock.Now.AddHours(12));
+        return tokenStore.Issue("mobile-device", TimeSpan.FromHours(12));
     }
 }

@@ -23,7 +23,7 @@ public sealed record PairingCompleteRequest(string Code);
 
 public sealed record PairingChallenge(string Code, DateTimeOffset ExpiresAt);
 
-public sealed record PairingToken(string AccessToken, DateTimeOffset ExpiresAt);
+public sealed record PairingToken(string AccessToken, DateTimeOffset ExpiresAt, string DeviceName = "mobile-device");
 
 public sealed record CommandRequest(string Command, string WorkingDirectory);
 

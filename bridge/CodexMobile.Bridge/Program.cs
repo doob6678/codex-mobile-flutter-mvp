@@ -13,6 +13,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<DeviceTokenStore>();
 builder.Services.AddSingleton<ProjectStore>();
 builder.Services.AddSingleton<FileWorkspaceService>();
 builder.Services.AddSingleton<PairingService>();
@@ -29,6 +30,30 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    if (BridgeEndpointPolicy.IsPublicEndpoint(context.Request.Path))
+    {
+        await next();
+        return;
+    }
+
+    var tokenStore = context.RequestServices.GetRequiredService<DeviceTokenStore>();
+    var authorization = context.Request.Headers.Authorization.ToString();
+    var token = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? authorization["Bearer ".Length..].Trim()
+        : null;
+
+    if (!tokenStore.Validate(token))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Bridge pairing token is missing, expired, or revoked." });
+        return;
+    }
+
+    await next();
+});
 
 app.MapGet("/", () => Results.Redirect("/health"));
 app.MapGet("/health", () => Results.Ok(new
@@ -99,3 +124,13 @@ app.MapHub<BridgeHub>("/hubs/events");
 app.Run();
 
 public partial class Program;
+
+public static class BridgeEndpointPolicy
+{
+    public static bool IsPublicEndpoint(PathString path)
+    {
+        return path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/pairing", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/protocol", StringComparison.OrdinalIgnoreCase);
+    }
+}

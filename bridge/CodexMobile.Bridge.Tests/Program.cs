@@ -17,6 +17,7 @@ var cases = new (string Name, Action Test)[]
     ("codex app-server gateway only allows mobile-safe methods", tests.CodexGatewayRejectsUnsafeMethods),
     ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
     ("codex app-server gateway reports unavailable status safely", tests.CodexGatewayReportsUnavailableStatusSafely),
+    ("device token store validates expiry and revocation", tests.DeviceTokenStoreValidatesExpiryAndRevocation),
 };
 
 var failures = new List<string>();
@@ -110,7 +111,8 @@ internal sealed class BridgeServiceTests
     public void PairingTokenExpiresAndCannotBeReused()
     {
         var clock = new ManualClock(new DateTimeOffset(2026, 5, 31, 8, 0, 0, TimeSpan.Zero));
-        var service = new PairingService(clock);
+        var tokenStore = new DeviceTokenStore(clock);
+        var service = new PairingService(clock, tokenStore);
         var challenge = service.Start(TimeSpan.FromSeconds(5));
 
         clock.Advance(TimeSpan.FromSeconds(6));
@@ -121,6 +123,7 @@ internal sealed class BridgeServiceTests
         var fresh = service.Start(TimeSpan.FromMinutes(1));
         var token = service.Complete(fresh.Code);
         AssertTrue(token.AccessToken.Length >= 32, "access token length");
+        AssertTrue(tokenStore.Validate(token.AccessToken), "token store validates issued token");
         AssertThrows<InvalidOperationException>(
             () => service.Complete(fresh.Code),
             "challenge cannot be reused");
@@ -215,6 +218,21 @@ internal sealed class BridgeServiceTests
         AssertFalse(status.Available, "status unavailable");
         AssertTrue(status.Message.Contains("[REDACTED]", StringComparison.Ordinal), "secret redacted");
         AssertFalse(status.Message.Contains("sk-secret", StringComparison.Ordinal), "secret removed");
+    }
+
+    public void DeviceTokenStoreValidatesExpiryAndRevocation()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 5, 31, 9, 0, 0, TimeSpan.Zero));
+        var store = new DeviceTokenStore(clock);
+        var token = store.Issue("phone", TimeSpan.FromMinutes(5));
+
+        AssertTrue(store.Validate(token.AccessToken), "fresh token validates");
+        clock.Advance(TimeSpan.FromMinutes(6));
+        AssertFalse(store.Validate(token.AccessToken), "expired token rejected");
+
+        var revoked = store.Issue("tablet", TimeSpan.FromMinutes(5));
+        store.Revoke(revoked.AccessToken);
+        AssertFalse(store.Validate(revoked.AccessToken), "revoked token rejected");
     }
 
     private static string FindRepositoryRoot()
