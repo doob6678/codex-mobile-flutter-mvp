@@ -86,9 +86,9 @@ Audit entries must redact secrets. Suggested fields include timestamp, device id
 - Prefer HTTPS/WSS even on LAN.
 - Bind only to configured interfaces.
 - Do not expose raw app-server transport to the phone.
+- Expose Codex app-server only through Bridge allowlisted methods; direct `fs/writeFile`, process, and command execution methods must stay behind approval-specific routes.
 - A cloud relay, if added later, should route encrypted messages only and must not store source code, long-lived tokens, or OpenAI keys.
 
 ## Codex App UI Synchronization
 
 The stable target is state synchronization between Flutter, Bridge, and local Codex app-server concepts. The MVP must not claim that third-party Flutter actions always appear live in the official Windows Codex App UI unless a future official contract or local verification proves it.
-

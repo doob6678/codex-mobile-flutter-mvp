@@ -28,6 +28,14 @@ The token represents the paired device, not an OpenAI account. OpenAI and Codex 
 |---|---|---|
 | `GET` | `/health` | Bridge liveness and optional app-server status summary. |
 | `GET` | `/protocol/summary` | Local CLI version, generated protocol asset version, supported Bridge mappings, and unavailable features. |
+| `GET` | `/codex/status` | Check whether the local `codex app-server` adapter is reachable without exposing secrets. |
+| `GET` | `/codex/config` | Read safe Codex config summary through `config/read`. |
+| `GET` | `/codex/account` | Read account/login state through `account/read`; never returns raw auth files. |
+| `GET` | `/codex/threads` | List Codex threads through `thread/list`. |
+| `GET` | `/codex/threads/{id}` | Read a thread through `thread/read`. |
+| `POST` | `/codex/threads` | Start a Codex thread through `thread/start`. |
+| `POST` | `/codex/turns` | Start or continue work through `turn/start`. |
+| `POST` | `/codex/raw` | Restricted JSON-RPC bridge for allowlisted app-server methods only. |
 | `POST` | `/pairing/start` | Create a short-lived pairing challenge and QR payload. |
 | `POST` | `/pairing/complete` | Exchange a challenge response for mobile access and refresh tokens. |
 | `GET` | `/projects` | List authorized project roots. |
@@ -69,6 +77,23 @@ Mobile event names:
 - `task.status_changed`
 
 These events are derived from generated app-server notifications such as `thread/started`, `turn/started`, `item/agentMessage/delta`, `command/exec/outputDelta`, `item/fileChange/patchUpdated`, `fs/changed`, and `serverRequest/resolved`.
+
+## Codex App-Server Adapter
+
+The `/codex/*` endpoints are a safety wrapper around generated app-server methods. The Bridge owns the allowlist and rejects write-oriented filesystem methods such as `fs/writeFile` unless a future implementation routes them through diff approval.
+
+Current allowlisted families:
+
+- Config/account read: `config/read`, `account/read`, `account/rateLimits/read`.
+- Thread/turn: `thread/list`, `thread/read`, `thread/start`, `thread/resume`, `thread/turns/list`, `thread/turns/items/list`, `turn/start`, `turn/steer`, `turn/interrupt`.
+- Read-only filesystem: `fs/readDirectory`, `fs/readFile`, `fs/getMetadata`.
+- Approval plumbing: `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`, `item/permissions/requestApproval`, `serverRequest/resolved`.
+- Tool/user-input and legacy approvals: `item/tool/requestUserInput`, `applyPatchApproval`, `execCommandApproval`.
+- Discovery: `model/list`, `collaborationMode/list`.
+
+Relevant event names tracked from generated assets include `thread/started`, `thread/status/changed`, `turn/started`, `turn/completed`, `turn/diff/updated`, `turn/plan/updated`, `fs/changed`, and `serverRequest/resolved`.
+
+Adapter failures are redacted before mobile responses, including OpenAI-style secret tokens and `OPENAI_API_KEY=...` assignments.
 
 ## Request Notes
 

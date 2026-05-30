@@ -93,3 +93,18 @@ public sealed record ProtocolSummary(
     IReadOnlyList<string> TypeScriptAssets,
     IReadOnlyList<string> SchemaAssets,
     IReadOnlyList<string> SupportedMethods);
+
+public sealed record CodexAppServerStatus(bool Available, string Message, DateTimeOffset CheckedAt);
+
+public sealed record CodexAppServerJsonResponse(string Method, System.Text.Json.JsonElement Json);
+
+public sealed record CodexAppServerRawRequest(string Method, System.Text.Json.JsonElement? Params);
+
+public sealed record StartCodexThreadRequest(
+    string WorkingDirectory,
+    string Prompt,
+    string? Model = null,
+    string? ApprovalPolicy = null,
+    string? SandboxMode = null);
+
+public sealed record StartCodexTurnRequest(string ThreadId, string Prompt);

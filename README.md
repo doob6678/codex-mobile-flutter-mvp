@@ -26,6 +26,7 @@ Smoke checks:
 ```powershell
 Invoke-RestMethod -Uri http://127.0.0.1:5010/health
 Invoke-RestMethod -Uri http://127.0.0.1:5010/protocol/summary
+Invoke-RestMethod -Uri http://127.0.0.1:5010/codex/status
 ```
 
 ## Flutter

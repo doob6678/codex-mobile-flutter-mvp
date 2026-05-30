@@ -151,6 +151,11 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
             if (-not ($summary.supportedMethods -contains 'thread/start')) {
                 throw "Protocol summary missing thread/start."
             }
+
+            $codexStatus = Invoke-RestMethod -Uri "$smokeUrl/codex/status" -UseBasicParsing
+            if ($null -eq $codexStatus.available -or [string]::IsNullOrWhiteSpace($codexStatus.message)) {
+                throw "Codex app-server status response is malformed."
+            }
         }
         finally {
             if ($server -and -not $server.HasExited) {

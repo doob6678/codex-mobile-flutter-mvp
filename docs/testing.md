@@ -35,6 +35,7 @@ It also starts the Bridge with `--no-launch-profile` and checks:
 ```powershell
 GET /health
 GET /protocol/summary
+GET /codex/status
 ```
 
 Expected backend coverage:
@@ -47,6 +48,7 @@ Expected backend coverage:
 - Pairing token expiry.
 - Audit log redaction.
 - HTTP health and protocol summary smoke behavior.
+- Codex app-server adapter status response shape and redaction path.
 
 ## Flutter Checks
 

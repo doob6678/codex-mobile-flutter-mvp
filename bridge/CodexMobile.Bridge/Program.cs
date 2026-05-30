@@ -19,6 +19,8 @@ builder.Services.AddSingleton<PairingService>();
 builder.Services.AddSingleton<AuditLog>();
 builder.Services.AddSingleton<CommandService>();
 builder.Services.AddSingleton<ConversationService>();
+builder.Services.AddSingleton<ICodexAppServerClient, StdioCodexAppServerClient>();
+builder.Services.AddSingleton<CodexAppServerGateway>();
 builder.Services.AddSingleton(sp =>
 {
     var root = builder.Configuration["RepositoryRoot"] ?? Directory.GetCurrentDirectory();
@@ -37,6 +39,22 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.MapGet("/protocol/summary", (ProtocolAssetService protocol) => Results.Ok(protocol.ReadSummary()));
+app.MapGet("/codex/status", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.GetStatusAsync(cancellationToken)));
+app.MapGet("/codex/config", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.ReadConfigAsync(cancellationToken)));
+app.MapGet("/codex/account", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.ReadAccountAsync(cancellationToken)));
+app.MapGet("/codex/threads", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.ListThreadsAsync(cancellationToken)));
+app.MapGet("/codex/threads/{threadId}", async (string threadId, CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.ReadThreadAsync(threadId, cancellationToken)));
+app.MapPost("/codex/threads", async (StartCodexThreadRequest request, CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.StartThreadAsync(request, cancellationToken)));
+app.MapPost("/codex/turns", async (StartCodexTurnRequest request, CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.StartTurnAsync(request, cancellationToken)));
+app.MapPost("/codex/raw", async (CodexAppServerRawRequest request, CodexAppServerGateway codex, CancellationToken cancellationToken) =>
+    Results.Ok(await codex.CallAsync(request.Method, request.Params, cancellationToken)));
 
 app.MapPost("/pairing/start", (PairingService pairing) => Results.Ok(pairing.Start(TimeSpan.FromMinutes(5))));
 app.MapPost("/pairing/complete", (PairingCompleteRequest request, PairingService pairing) => Results.Ok(pairing.Complete(request.Code)));

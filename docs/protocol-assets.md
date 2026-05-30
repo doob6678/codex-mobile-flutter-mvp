@@ -50,6 +50,8 @@ Key generated request families used by the MVP mapping:
 | Commands and processes | `command/exec`, `command/exec/write`, `command/exec/terminate`, `command/exec/resize`, `process/spawn`, `process/writeStdin`, `process/kill` |
 | Events | `thread/started`, `thread/status/changed`, `item/started`, `item/completed`, `item/agentMessage/delta`, `command/exec/outputDelta`, `fs/changed`, `serverRequest/resolved` |
 
+Server-initiated request methods in `ServerRequest.ts` include `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`, `item/permissions/requestApproval`, `item/tool/requestUserInput`, `mcpServer/elicitation/request`, `item/tool/call`, `account/chatgptAuthTokens/refresh`, `attestation/generate`, plus legacy `applyPatchApproval` and `execCommandApproval`.
+
 ## Bridge Mapping
 
 The Bridge should expose a stable mobile API and keep app-server compatibility behind `/protocol/summary`. The Flutter app should not connect to a raw app-server socket.
@@ -81,4 +83,3 @@ The Bridge should expose a stable mobile API and keep app-server compatibility b
 - The Bridge owns version adaptation when Codex app-server adds, removes, or renames methods.
 - Do not expose `.codex/auth.json`, raw environment variables, or OpenAI API keys through protocol summary responses.
 - Official Codex App UI synchronization is not a stable MVP dependency. The reliable contract is Flutter to Bridge to app-server state, not guaranteed live refresh inside the desktop Codex App window.
-

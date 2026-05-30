@@ -1,5 +1,6 @@
 using CodexMobile.Bridge.Models;
 using CodexMobile.Bridge.Services;
+using System.Text.Json;
 using System.Text;
 
 var tests = new BridgeServiceTests();
@@ -13,6 +14,9 @@ var cases = new (string Name, Action Test)[]
     ("audit log redacts secret values", tests.AuditLogRedactsSecrets),
     ("conversation service stores messages and approvals", tests.ConversationServiceStoresMessagesAndApprovals),
     ("protocol summary detects generated codex schema assets", tests.ProtocolSummaryDetectsGeneratedAssets),
+    ("codex app-server gateway only allows mobile-safe methods", tests.CodexGatewayRejectsUnsafeMethods),
+    ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
+    ("codex app-server gateway reports unavailable status safely", tests.CodexGatewayReportsUnavailableStatusSafely),
 };
 
 var failures = new List<string>();
@@ -171,6 +175,48 @@ internal sealed class BridgeServiceTests
         AssertTrue(summary.SupportedMethods.Contains("fs/readFile"), "fs/readFile mapped");
     }
 
+    public void CodexGatewayRejectsUnsafeMethods()
+    {
+        var client = new FakeCodexAppServerClient();
+        var gateway = new CodexAppServerGateway(client);
+
+        AssertThrows<InvalidOperationException>(
+            () => gateway.CallAsync("fs/writeFile", new Dictionary<string, object?>()).GetAwaiter().GetResult(),
+            "unsafe app-server method should be rejected");
+    }
+
+    public void CodexGatewayMapsCoreCalls()
+    {
+        var client = new FakeCodexAppServerClient();
+        client.Enqueue("config/read", new Dictionary<string, object?> { ["model"] = "gpt-5.5" });
+        client.Enqueue("account/read", new Dictionary<string, object?> { ["authMode"] = "chatgpt" });
+        client.Enqueue("thread/list", new Dictionary<string, object?> { ["items"] = Array.Empty<object>() });
+        var gateway = new CodexAppServerGateway(client);
+
+        var config = gateway.ReadConfigAsync().GetAwaiter().GetResult();
+        var account = gateway.ReadAccountAsync().GetAwaiter().GetResult();
+        var threads = gateway.ListThreadsAsync().GetAwaiter().GetResult();
+
+        AssertEqual("config/read", client.Calls[0].Method, "config method");
+        AssertEqual("account/read", client.Calls[1].Method, "account method");
+        AssertEqual("thread/list", client.Calls[2].Method, "thread list method");
+        AssertTrue(config.Json.GetProperty("model").GetString() == "gpt-5.5", "config payload preserved");
+        AssertTrue(account.Json.GetProperty("authMode").GetString() == "chatgpt", "account payload preserved");
+        AssertTrue(threads.Json.TryGetProperty("items", out _), "thread payload preserved");
+    }
+
+    public void CodexGatewayReportsUnavailableStatusSafely()
+    {
+        var client = new FakeCodexAppServerClient { Failure = new InvalidOperationException("OPENAI_API_KEY=sk-secret crashed") };
+        var gateway = new CodexAppServerGateway(client);
+
+        var status = gateway.GetStatusAsync().GetAwaiter().GetResult();
+
+        AssertFalse(status.Available, "status unavailable");
+        AssertTrue(status.Message.Contains("[REDACTED]", StringComparison.Ordinal), "secret redacted");
+        AssertFalse(status.Message.Contains("sk-secret", StringComparison.Ordinal), "secret removed");
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -218,6 +264,42 @@ internal sealed class BridgeServiceTests
         }
 
         throw new InvalidOperationException(message);
+    }
+}
+
+internal sealed class FakeCodexAppServerClient : ICodexAppServerClient
+{
+    private readonly Queue<(string Method, object? Response)> responses = new();
+
+    public List<CodexAppServerCall> Calls { get; } = new();
+
+    public Exception? Failure { get; set; }
+
+    public void Enqueue(string method, object? response)
+    {
+        responses.Enqueue((method, response));
+    }
+
+    public Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken)
+    {
+        Calls.Add(new CodexAppServerCall(method, parameters));
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+
+        if (responses.Count == 0)
+        {
+            return Task.FromResult(JsonSerializer.SerializeToElement(new Dictionary<string, object?>()));
+        }
+
+        var response = responses.Dequeue();
+        if (!string.Equals(response.Method, method, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected {response.Method}, got {method}");
+        }
+
+        return Task.FromResult(JsonSerializer.SerializeToElement(response.Response));
     }
 }
 
