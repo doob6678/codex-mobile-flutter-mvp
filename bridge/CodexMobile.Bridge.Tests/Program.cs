@@ -26,6 +26,8 @@ var cases = new (string Name, Action Test)[]
     ("network interface service accepts temporary host override", tests.NetworkInterfaceServiceAcceptsTemporaryHostOverride),
     ("sync service updates goal and records mobile-visible event", tests.SyncServiceUpdatesGoalAndRecordsMobileVisibleEvent),
     ("sync service tracks task progress through completion", tests.SyncServiceTracksTaskProgressThroughCompletion),
+    ("bridge hosting defaults to all interfaces for phone access", tests.BridgeHostingDefaultsToAllInterfacesForPhoneAccess),
+    ("bridge hosting accepts explicit bind urls", tests.BridgeHostingAcceptsExplicitBindUrls),
 };
 
 var failures = new List<string>();
@@ -380,6 +382,33 @@ internal sealed class BridgeServiceTests
         AssertTrue(snapshot.Events.Count(evt => evt.Type == "task.updated") >= 2, "task update events recorded");
     }
 
+    public void BridgeHostingDefaultsToAllInterfacesForPhoneAccess()
+    {
+        WithTemporaryEnvironment("ASPNETCORE_URLS", null, () =>
+            WithTemporaryEnvironment("CODEX_MOBILE_BIND_URLS", null, () =>
+            {
+                var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+
+                var urls = BridgeHosting.ResolveUrls(configuration);
+
+                AssertEqual("http://0.0.0.0:5010", urls.Single(), "default bind url");
+            }));
+    }
+
+    public void BridgeHostingAcceptsExplicitBindUrls()
+    {
+        WithTemporaryEnvironment("ASPNETCORE_URLS", null, () =>
+            WithTemporaryEnvironment("CODEX_MOBILE_BIND_URLS", "http://127.0.0.1:5011;http://0.0.0.0:5011", () =>
+            {
+                var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+
+                var urls = BridgeHosting.ResolveUrls(configuration);
+
+                AssertEqual(2, urls.Length, "explicit url count");
+                AssertTrue(urls.Contains("http://0.0.0.0:5011"), "explicit all-interface url");
+            }));
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -427,6 +456,20 @@ internal sealed class BridgeServiceTests
         }
 
         throw new InvalidOperationException(message);
+    }
+
+    private static void WithTemporaryEnvironment(string name, string? value, Action action)
+    {
+        var previous = Environment.GetEnvironmentVariable(name);
+        try
+        {
+            Environment.SetEnvironmentVariable(name, value);
+            action();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(name, previous);
+        }
     }
 }
 

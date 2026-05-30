@@ -12,12 +12,20 @@ This repository implements the MVP path from `codex-mobile-flutter-research.md`:
 
 ## Bridge
 
-Run the Bridge locally:
+Run the Bridge locally with phone-accessible defaults:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-bridge.ps1
+```
+
+This binds the server to `http://0.0.0.0:5010`, auto-detects the AgentScope Java Harness Markdown knowledge base under the desktop when present, and keeps all protected APIs behind pairing tokens.
+
+Manual equivalent:
 
 ```powershell
 $env:DOTNET_CLI_HOME=(Join-Path (Get-Location) '.dotnet_home')
 $env:NUGET_PACKAGES=(Join-Path (Get-Location) '.nuget_packages')
-$env:ASPNETCORE_URLS='http://127.0.0.1:5010'
+$env:ASPNETCORE_URLS='http://0.0.0.0:5010'
 $env:CODEX_MOBILE_DEFAULT_PROJECTS='AgentScope Java Harness 知识库=C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness\AgentScope-Java-Harness-知识库'
 dotnet run --no-restore --no-launch-profile --project bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj
 ```
@@ -43,7 +51,7 @@ cd mobile_app
 flutter run --dart-define=BRIDGE_URL=http://127.0.0.1:5010
 ```
 
-For Android emulator networking, use `http://10.0.2.2:5010` or `adb reverse` depending on device setup.
+For a physical phone, use the Windows private LAN or mesh/VPN URL shown by the Bridge `/network/interfaces` response, for example `http://192.168.x.x:5010`. For Android emulator networking, use `http://10.0.2.2:5010` or `adb reverse` depending on device setup.
 
 ## Verification
 
@@ -65,7 +73,7 @@ For a simple two-part release, build the Windows Bridge and mobile app:
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-The script publishes a Windows Bridge server and builds the Flutter client for available local targets. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need the produced app and the Windows Bridge folder.
+The script publishes a Windows Bridge server and builds the Flutter client for available local targets. The Bridge package includes its own `start-bridge.ps1`; end users can run that script from `dist\bridge-framework-dependent` after installing the .NET 8 runtime. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need the produced app and the Windows Bridge folder.
 
 ## Security Boundary
 

@@ -63,6 +63,7 @@ Expected backend coverage:
 - First live sync snapshot from the server-sent event stream.
 - Optional default Markdown knowledge-base project loading through `CODEX_MOBILE_DEFAULT_PROJECTS`.
 - Remote reading of `00-总目录.md` with `language=markdown` when the AgentScope Java Harness knowledge base exists locally.
+- Default Bridge hosting behavior binds to `http://0.0.0.0:5010` so a phone can connect through the Windows LAN or mesh/VPN address.
 
 ## Flutter Checks
 
@@ -106,6 +107,14 @@ After backend and mobile client exist:
 ## Network Smoke Details
 
 `scripts/verify.ps1` sets `CODEX_MOBILE_BRIDGE_HOSTS` to a temporary mix of loopback, private LAN, mesh/VPN, and public IP examples. The smoke test asserts that private and mesh URLs appear and the public host is hidden. It then pairs, writes `/goal`, completes a task through HTTP, and reads the first snapshot from `/sync/stream`.
+
+For a phone-accessible local run, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-bridge.ps1
+```
+
+The script binds the Bridge to all interfaces on port `5010` and auto-loads the AgentScope Java Harness Markdown knowledge base when it is found under the desktop.
 
 ## Regenerating Protocol Assets
 
