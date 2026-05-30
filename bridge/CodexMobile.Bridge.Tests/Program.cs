@@ -9,6 +9,8 @@ var cases = new (string Name, Action Test)[]
 {
     ("project whitelist canonicalizes roots and rejects path escape", tests.ProjectWhitelistRejectsPathEscape),
     ("file service reads text and hashes content", tests.FileServiceReadsAndHashesText),
+    ("file service marks markdown files for mobile reading", tests.FileServiceMarksMarkdownFilesForMobileReading),
+    ("project store loads default knowledge projects from environment format", tests.ProjectStoreLoadsDefaultKnowledgeProjectsFromEnvironmentFormat),
     ("file patch rejects stale hashes and applies matching content", tests.FilePatchUsesExpectedHash),
     ("pairing token expires and cannot be reused", tests.PairingTokenExpiresAndCannotBeReused),
     ("command service rejects commands outside allowlist", tests.CommandServiceRejectsUnsafeCommands),
@@ -91,6 +93,37 @@ internal sealed class BridgeServiceTests
         AssertEqual("# hello", read.Content, "text content");
         AssertTrue(read.Hash.Length == 64, "sha256 hash length");
         AssertTrue(files.List(project.Id, ".").Any(file => file.Name == "notes.md"), "list includes file");
+    }
+
+    public void FileServiceMarksMarkdownFilesForMobileReading()
+    {
+        using var workspace = new TempWorkspace();
+        var root = workspace.CreateDirectory("knowledge");
+        File.WriteAllText(Path.Combine(root, "00-总目录.md"), "# 总目录\n\n- 快速开始", Encoding.UTF8);
+
+        var store = new ProjectStore();
+        var project = store.AddProject("AgentScope Java Harness 知识库", root);
+        var files = new FileWorkspaceService(store);
+
+        var read = files.ReadText(project.Id, "00-总目录.md");
+
+        AssertEqual("markdown", read.Language, "markdown language detected");
+        AssertTrue(read.Content.Contains("快速开始", StringComparison.Ordinal), "markdown content preserved");
+    }
+
+    public void ProjectStoreLoadsDefaultKnowledgeProjectsFromEnvironmentFormat()
+    {
+        using var workspace = new TempWorkspace();
+        var root = workspace.CreateDirectory("AgentScope-Java-Harness-知识库");
+        var missing = Path.Combine(root, "missing");
+        var store = new ProjectStore();
+
+        var added = store.AddConfiguredProjects($"AgentScope Java Harness 知识库={root};Missing={missing}");
+
+        AssertEqual(1, added, "only existing roots are loaded");
+        var project = store.ListProjects().Single();
+        AssertEqual("AgentScope Java Harness 知识库", project.Name, "configured name preserved");
+        AssertEqual(root, project.RootPath, "configured root canonicalized");
     }
 
     public void FilePatchUsesExpectedHash()

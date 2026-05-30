@@ -42,6 +42,8 @@ POST /tasks
 POST /tasks/{id}/progress
 GET /sync/state
 GET /sync/stream
+GET /projects
+GET /files/read
 ```
 
 Expected backend coverage:
@@ -59,6 +61,8 @@ Expected backend coverage:
 - Default suppression of public bridge hosts.
 - Protected `/goal` and task progress updates.
 - First live sync snapshot from the server-sent event stream.
+- Optional default Markdown knowledge-base project loading through `CODEX_MOBILE_DEFAULT_PROJECTS`.
+- Remote reading of `00-总目录.md` with `language=markdown` when the AgentScope Java Harness knowledge base exists locally.
 
 ## Flutter Checks
 
@@ -81,6 +85,7 @@ Expected Flutter coverage:
 - Release-build safety text for debug bridge behavior.
 - Goal/task progress surface and live-sync copy.
 - Network URL and public-host warning rendering.
+- Markdown preview rendering for mobile reading.
 
 ## Manual Smoke Checks
 
@@ -89,8 +94,8 @@ After backend and mobile client exist:
 1. Start the Bridge locally.
 2. Open `GET /health`.
 3. Start pairing and connect the Flutter app.
-4. Add a small test project to the whitelist.
-5. Browse a directory and read a UTF-8 text file.
+4. Configure `CODEX_MOBILE_DEFAULT_PROJECTS='AgentScope Java Harness 知识库=<knowledge-root>'` or add a small test project to the whitelist.
+5. Browse a directory and read a UTF-8 Markdown file.
 6. Start a conversation bound to that project.
 7. Set a `/goal` from the mobile Goals tab.
 8. Create or receive a task progress record and confirm it updates live.

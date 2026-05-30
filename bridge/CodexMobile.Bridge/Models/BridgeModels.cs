@@ -11,7 +11,7 @@ public sealed record CodexFileEntry(
     long Size,
     DateTimeOffset ModifiedAt);
 
-public sealed record FileReadResponse(string ProjectId, string Path, string Content, string Hash, long Size);
+public sealed record FileReadResponse(string ProjectId, string Path, string Content, string Hash, long Size, string Language);
 
 public sealed record FileHashResponse(string ProjectId, string Path, string Hash);
 

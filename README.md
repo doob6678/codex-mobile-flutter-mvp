@@ -18,6 +18,7 @@ Run the Bridge locally:
 $env:DOTNET_CLI_HOME=(Join-Path (Get-Location) '.dotnet_home')
 $env:NUGET_PACKAGES=(Join-Path (Get-Location) '.nuget_packages')
 $env:ASPNETCORE_URLS='http://127.0.0.1:5010'
+$env:CODEX_MOBILE_DEFAULT_PROJECTS='AgentScope Java Harness 知识库=C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness\AgentScope-Java-Harness-知识库'
 dotnet run --no-restore --no-launch-profile --project bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj
 ```
 
@@ -30,6 +31,8 @@ Invoke-RestMethod -Uri http://127.0.0.1:5010/codex/status
 ```
 
 Pairing is required before mobile-visible project, network, goal, task, and Codex endpoints can be used. After pairing, the mobile app can set `/goal`, read task progress, and receive live state snapshots from `/sync/stream`.
+
+`CODEX_MOBILE_DEFAULT_PROJECTS` pre-authorizes read roots at startup. Use `Name=Path;Name2=Path2`. The AgentScope Java Harness Markdown knowledge base can then be opened from the mobile `Projects` or `Files` screens and read as mobile-formatted Markdown.
 
 ## Flutter
 

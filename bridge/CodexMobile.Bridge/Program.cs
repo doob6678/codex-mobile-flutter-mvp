@@ -15,7 +15,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<DeviceTokenStore>();
-builder.Services.AddSingleton<ProjectStore>();
+builder.Services.AddSingleton(sp =>
+{
+    var store = new ProjectStore();
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    store.AddConfiguredProjects(configuration["DefaultProjects"]);
+    store.AddConfiguredProjects(Environment.GetEnvironmentVariable("CODEX_MOBILE_DEFAULT_PROJECTS"));
+    return store;
+});
 builder.Services.AddSingleton<FileWorkspaceService>();
 builder.Services.AddSingleton<PairingService>();
 builder.Services.AddSingleton<AuditLog>();

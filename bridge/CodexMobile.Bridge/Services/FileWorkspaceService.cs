@@ -39,7 +39,7 @@ public sealed class FileWorkspaceService
 
         var content = File.ReadAllText(path, Encoding.UTF8);
         var info = new FileInfo(path);
-        return new FileReadResponse(projectId, relativePath, content, ComputeHash(path), info.Length);
+        return new FileReadResponse(projectId, relativePath, content, ComputeHash(path), info.Length, DetectLanguage(path));
     }
 
     public FileHashResponse Hash(string projectId, string relativePath)
@@ -87,5 +87,21 @@ public sealed class FileWorkspaceService
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static string DetectLanguage(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".md" or ".markdown" => "markdown",
+            ".dart" => "dart",
+            ".cs" => "csharp",
+            ".java" => "java",
+            ".js" => "javascript",
+            ".ts" => "typescript",
+            ".json" => "json",
+            ".ps1" => "powershell",
+            _ => "text",
+        };
     }
 }

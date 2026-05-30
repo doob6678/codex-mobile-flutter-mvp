@@ -25,6 +25,49 @@ public sealed class ProjectStore
         return project;
     }
 
+    public int AddConfiguredProjects(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0;
+        }
+
+        var added = 0;
+        foreach (var entry in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = entry.IndexOf('=', StringComparison.Ordinal);
+            var name = separator > 0 ? entry[..separator].Trim() : Path.GetFileName(entry.Trim());
+            var rootPath = separator > 0 ? entry[(separator + 1)..].Trim() : entry.Trim();
+
+            if (TryAddConfiguredProject(name, rootPath))
+            {
+                added++;
+            }
+        }
+
+        return added;
+    }
+
+    public bool TryAddConfiguredProject(string name, string rootPath)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+        {
+            return false;
+        }
+
+        var canonicalRoot = CanonicalizeRoot(rootPath);
+        lock (gate)
+        {
+            if (projects.Values.Any(project => IsSamePath(project.RootPath, canonicalRoot)))
+            {
+                return false;
+            }
+        }
+
+        AddProject(string.IsNullOrWhiteSpace(name) ? Path.GetFileName(canonicalRoot) : name, canonicalRoot);
+        return true;
+    }
+
     public IReadOnlyList<ProjectRecord> ListProjects()
     {
         lock (gate)

@@ -8,6 +8,7 @@ import 'package:mobile_app/src/models/codex_file.dart';
 import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
 import 'package:mobile_app/src/models/sync_state.dart';
+import 'package:mobile_app/src/screens/file_preview_screen.dart';
 
 void main() {
   testWidgets('navigation exposes all MVP surfaces', (tester) async {
@@ -90,6 +91,24 @@ void main() {
     expect(find.text('90%'), findsOneWidget);
     expect(find.textContaining('Live sync connected'), findsOneWidget);
   });
+
+  testWidgets('markdown preview renders as mobile reading content', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: FilePreviewScreen(
+          preview: FilePreview(
+            path: '00-总目录.md',
+            content: '# AgentScope Java Harness\n\n- 快速开始\n正文段落',
+            language: 'markdown',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('AgentScope Java Harness'), findsOneWidget);
+    expect(find.text('快速开始'), findsOneWidget);
+    expect(find.text('正文段落'), findsOneWidget);
+  });
 }
 
 class _FakeApi implements CodexMobileApi {
@@ -115,6 +134,13 @@ class _FakeApi implements CodexMobileApi {
       rootPath: r'C:\work\codex_mobile_app',
       trusted: true,
     ),
+    ProjectSummary(
+      id: 'knowledge-1',
+      name: 'AgentScope Java Harness 知识库',
+      rootPath:
+          r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness\AgentScope-Java-Harness-知识库',
+      trusted: true,
+    ),
   ];
 
   @override
@@ -129,6 +155,13 @@ class _FakeApi implements CodexMobileApi {
       kind: CodexFileKind.file,
       sizeBytes: 32,
       preview: 'void main() {}',
+    ),
+    CodexFile(
+      name: '00-总目录.md',
+      path: '00-总目录.md',
+      kind: CodexFileKind.file,
+      sizeBytes: 256,
+      preview: '# AgentScope Java Harness',
     ),
   ];
 

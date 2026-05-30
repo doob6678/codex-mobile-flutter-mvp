@@ -49,7 +49,7 @@ The token represents the paired device, not an OpenAI account. OpenAI and Codex 
 | `GET` | `/projects` | List authorized project roots. |
 | `POST` | `/projects` | Add an authorized project root after local confirmation. |
 | `GET` | `/files/list` | List one directory under an authorized root. |
-| `GET` | `/files/read` | Read a UTF-8 text file preview under an authorized root. |
+| `GET` | `/files/read` | Read a UTF-8 text file preview under an authorized root, including `language=markdown` for `.md` files. |
 | `GET` | `/files/hash` | Return a content hash for concurrency checks before patching. |
 | `POST` | `/files/patch` | Apply an approved patch when the base hash still matches. |
 | `GET` | `/conversations` | List mobile-visible Codex threads/conversations. |
@@ -112,6 +112,14 @@ Relevant event names tracked from generated assets include `thread/started`, `th
 Adapter failures are redacted before mobile responses, including OpenAI-style secret tokens and `OPENAI_API_KEY=...` assignments.
 
 ## Request Notes
+
+Default read roots can be pre-authorized at Bridge startup:
+
+```powershell
+$env:CODEX_MOBILE_DEFAULT_PROJECTS='AgentScope Java Harness 知识库=C:\path\to\AgentScope-Java-Harness-知识库'
+```
+
+Use semicolons to provide multiple roots. Paths are still canonicalized and must exist before they are exposed to paired devices.
 
 `GET /files/list` accepts:
 

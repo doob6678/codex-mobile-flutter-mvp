@@ -178,10 +178,18 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
         $previousNugetPackages = $env:NUGET_PACKAGES
         $previousBridgeHosts = $env:CODEX_MOBILE_BRIDGE_HOSTS
         $previousAllowPublicBridge = $env:CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE
+        $previousDefaultProjects = $env:CODEX_MOBILE_DEFAULT_PROJECTS
         $env:ASPNETCORE_URLS = $smokeUrl
         $env:DOTNET_CLI_HOME = Join-Path $RepoRoot '.dotnet_home'
         $env:NUGET_PACKAGES = Join-Path $RepoRoot '.nuget_packages'
         $env:CODEX_MOBILE_BRIDGE_HOSTS = '127.0.0.1,192.168.55.44,100.72.10.9,8.8.8.8'
+        $knowledgeRoot = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE 'Desktop') -Directory -Recurse -Filter 'AgentScope-Java-Harness-*' -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+        $knowledgeProjectName = 'AgentScope Java Harness Knowledge Base'
+        $knowledgeRootExists = -not [string]::IsNullOrWhiteSpace($knowledgeRoot) -and (Test-Path -LiteralPath $knowledgeRoot -PathType Container)
+        if ($knowledgeRootExists) {
+            $env:CODEX_MOBILE_DEFAULT_PROJECTS = "$knowledgeProjectName=$knowledgeRoot"
+        }
         Remove-Item Env:\CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE -ErrorAction SilentlyContinue
         $startInfo = [System.Diagnostics.ProcessStartInfo]::new('dotnet')
         $startInfo.Arguments = 'run --no-restore --no-launch-profile --project bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj'
@@ -257,6 +265,19 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
             if ($null -eq $syncEvent.updatedAt -or $null -eq $syncEvent.tasks) {
                 throw "Sync stream first event was malformed."
             }
+
+            if ($knowledgeRootExists) {
+                $projects = Invoke-RestMethod -Uri "$smokeUrl/projects" -Headers $headers -UseBasicParsing
+                if (-not ($projects | Where-Object { $_.name -eq $knowledgeProjectName })) {
+                    throw "Default knowledge project was not loaded."
+                }
+
+                $knowledgeProject = $projects | Where-Object { $_.name -eq $knowledgeProjectName } | Select-Object -First 1
+                $markdown = Invoke-RestMethod -Uri "$smokeUrl/files/read?projectId=$($knowledgeProject.id)&path=00-%E6%80%BB%E7%9B%AE%E5%BD%95.md" -Headers $headers -UseBasicParsing
+                if ($markdown.language -ne 'markdown') {
+                    throw "Knowledge base markdown was not marked as markdown."
+                }
+            }
         }
         finally {
             if ($server -and -not $server.HasExited) {
@@ -268,6 +289,7 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
             $env:NUGET_PACKAGES = $previousNugetPackages
             $env:CODEX_MOBILE_BRIDGE_HOSTS = $previousBridgeHosts
             $env:CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE = $previousAllowPublicBridge
+            $env:CODEX_MOBILE_DEFAULT_PROJECTS = $previousDefaultProjects
         }
     }
     elseif (Test-Path -LiteralPath 'CodexMobile.sln' -PathType Leaf) {
