@@ -94,6 +94,84 @@ public sealed record ProtocolSummary(
     IReadOnlyList<string> SchemaAssets,
     IReadOnlyList<string> SupportedMethods);
 
+public sealed record BridgeNetworkSummary(
+    string Scheme,
+    int Port,
+    bool PublicExposureAllowed,
+    IReadOnlyList<BridgeNetworkEndpoint> Endpoints,
+    IReadOnlyList<string> Warnings);
+
+public sealed record BridgeNetworkEndpoint(
+    string Host,
+    string Url,
+    string Scope,
+    bool RequiresPairing,
+    bool IsRecommendedForMobile);
+
+public sealed record GoalRecord(
+    string Id,
+    string Objective,
+    GoalStatus Status,
+    string Source,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? CompletedAt);
+
+public enum GoalStatus
+{
+    Active,
+    Completed,
+    Paused,
+}
+
+public sealed record UpdateGoalRequest(
+    string Objective,
+    GoalStatus Status = GoalStatus.Active,
+    string Source = "mobile");
+
+public sealed record CodexTaskRecord(
+    string Id,
+    string Title,
+    string Detail,
+    string? ConversationId,
+    CodexTaskStatus Status,
+    int ProgressPercent,
+    string Summary,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? CompletedAt);
+
+public enum CodexTaskStatus
+{
+    Pending,
+    Running,
+    Blocked,
+    Completed,
+    Failed,
+}
+
+public sealed record CreateCodexTaskRequest(
+    string Title,
+    string Detail,
+    string? ConversationId = null);
+
+public sealed record UpdateCodexTaskProgressRequest(
+    CodexTaskStatus Status,
+    int ProgressPercent,
+    string Summary);
+
+public sealed record CodexSyncEvent(
+    string Type,
+    string EntityId,
+    DateTimeOffset Timestamp,
+    IReadOnlyDictionary<string, object?> Payload);
+
+public sealed record CodexSyncSnapshot(
+    GoalRecord? Goal,
+    IReadOnlyList<CodexTaskRecord> Tasks,
+    IReadOnlyList<CodexSyncEvent> Events,
+    DateTimeOffset UpdatedAt);
+
 public sealed record CodexAppServerStatus(bool Available, string Message, DateTimeOffset CheckedAt);
 
 public sealed record CodexAppServerJsonResponse(string Method, System.Text.Json.JsonElement Json);

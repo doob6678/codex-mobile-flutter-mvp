@@ -1,6 +1,7 @@
 using CodexMobile.Bridge.Hubs;
 using CodexMobile.Bridge.Models;
 using CodexMobile.Bridge.Services;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +21,8 @@ builder.Services.AddSingleton<PairingService>();
 builder.Services.AddSingleton<AuditLog>();
 builder.Services.AddSingleton<CommandService>();
 builder.Services.AddSingleton<ConversationService>();
+builder.Services.AddSingleton<NetworkInterfaceService>();
+builder.Services.AddSingleton<SyncStateService>();
 builder.Services.AddSingleton<ICodexAppServerClient, StdioCodexAppServerClient>();
 builder.Services.AddSingleton<CodexAppServerGateway>();
 builder.Services.AddSingleton(sp =>
@@ -30,6 +33,8 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+var streamJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+streamJsonOptions.Converters.Add(new JsonStringEnumConverter());
 
 app.Use(async (context, next) =>
 {
@@ -64,6 +69,35 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.MapGet("/protocol/summary", (ProtocolAssetService protocol) => Results.Ok(protocol.ReadSummary()));
+app.MapGet("/network/interfaces", (HttpContext context, NetworkInterfaceService network) =>
+{
+    var port = context.Request.Host.Port
+        ?? (string.Equals(context.Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80);
+    return Results.Ok(network.ReadSummary(context.Request.Scheme, port));
+});
+app.MapGet("/sync/state", (SyncStateService sync) => Results.Ok(sync.GetSnapshot()));
+app.MapGet("/sync/stream", async (HttpContext context, SyncStateService sync) =>
+{
+    context.Response.Headers.ContentType = "text/event-stream";
+    context.Response.Headers.CacheControl = "no-cache";
+    await foreach (var snapshot in sync.StreamSnapshots(context.RequestAborted))
+    {
+        var json = JsonSerializer.Serialize(snapshot, streamJsonOptions);
+        await context.Response.WriteAsync($"event: sync.state\ndata: {json}\n\n", context.RequestAborted);
+        await context.Response.Body.FlushAsync(context.RequestAborted);
+    }
+});
+app.MapGet("/goal", (SyncStateService sync) => Results.Ok(sync.CurrentGoal()));
+app.MapPost("/goal", (UpdateGoalRequest request, SyncStateService sync) =>
+    Results.Ok(sync.UpdateGoal(request)));
+app.MapGet("/tasks", (SyncStateService sync) => Results.Ok(sync.ListTasks()));
+app.MapPost("/tasks", (CreateCodexTaskRequest request, SyncStateService sync) =>
+{
+    var task = sync.CreateTask(request);
+    return Results.Created($"/tasks/{task.Id}", task);
+});
+app.MapPost("/tasks/{id}/progress", (string id, UpdateCodexTaskProgressRequest request, SyncStateService sync) =>
+    Results.Ok(sync.UpdateTaskProgress(id, request)));
 app.MapGet("/codex/status", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>
     Results.Ok(await codex.GetStatusAsync(cancellationToken)));
 app.MapGet("/codex/config", async (CodexAppServerGateway codex, CancellationToken cancellationToken) =>

@@ -36,6 +36,12 @@ It also starts the Bridge with `--no-launch-profile` and checks:
 GET /health
 GET /protocol/summary
 GET /codex/status
+GET /network/interfaces
+POST /goal
+POST /tasks
+POST /tasks/{id}/progress
+GET /sync/state
+GET /sync/stream
 ```
 
 Expected backend coverage:
@@ -49,6 +55,10 @@ Expected backend coverage:
 - Audit log redaction.
 - HTTP health and protocol summary smoke behavior.
 - Codex app-server adapter status response shape and redaction path.
+- Private LAN and mesh/VPN bridge URL reporting.
+- Default suppression of public bridge hosts.
+- Protected `/goal` and task progress updates.
+- First live sync snapshot from the server-sent event stream.
 
 ## Flutter Checks
 
@@ -69,6 +79,8 @@ Expected Flutter coverage:
 - Project and file list rendering.
 - Conversation and approval surfaces.
 - Release-build safety text for debug bridge behavior.
+- Goal/task progress surface and live-sync copy.
+- Network URL and public-host warning rendering.
 
 ## Manual Smoke Checks
 
@@ -80,9 +92,15 @@ After backend and mobile client exist:
 4. Add a small test project to the whitelist.
 5. Browse a directory and read a UTF-8 text file.
 6. Start a conversation bound to that project.
-7. Trigger a command preview and confirm the approval card shows command, cwd, args, risk, and expiry.
-8. Apply a small patch only after checking the base hash.
-9. Confirm `GET /audit` shows redacted entries.
+7. Set a `/goal` from the mobile Goals tab.
+8. Create or receive a task progress record and confirm it updates live.
+9. Trigger a command preview and confirm the approval card shows command, cwd, args, risk, and expiry.
+10. Apply a small patch only after checking the base hash.
+11. Confirm `GET /audit` shows redacted entries.
+
+## Network Smoke Details
+
+`scripts/verify.ps1` sets `CODEX_MOBILE_BRIDGE_HOSTS` to a temporary mix of loopback, private LAN, mesh/VPN, and public IP examples. The smoke test asserts that private and mesh URLs appear and the public host is hidden. It then pairs, writes `/goal`, completes a task through HTTP, and reads the first snapshot from `/sync/stream`.
 
 ## Regenerating Protocol Assets
 

@@ -2,6 +2,7 @@ using CodexMobile.Bridge.Models;
 using CodexMobile.Bridge.Services;
 using System.Text.Json;
 using System.Text;
+using System.Net;
 
 var tests = new BridgeServiceTests();
 var cases = new (string Name, Action Test)[]
@@ -18,6 +19,11 @@ var cases = new (string Name, Action Test)[]
     ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
     ("codex app-server gateway reports unavailable status safely", tests.CodexGatewayReportsUnavailableStatusSafely),
     ("device token store validates expiry and revocation", tests.DeviceTokenStoreValidatesExpiryAndRevocation),
+    ("network interface service reports private mobile bridge URLs", tests.NetworkInterfaceServiceReportsPrivateMobileBridgeUrls),
+    ("network interface service hides public hosts unless explicitly allowed", tests.NetworkInterfaceServiceHidesPublicHostsUnlessExplicitlyAllowed),
+    ("network interface service accepts temporary host override", tests.NetworkInterfaceServiceAcceptsTemporaryHostOverride),
+    ("sync service updates goal and records mobile-visible event", tests.SyncServiceUpdatesGoalAndRecordsMobileVisibleEvent),
+    ("sync service tracks task progress through completion", tests.SyncServiceTracksTaskProgressThroughCompletion),
 };
 
 var failures = new List<string>();
@@ -233,6 +239,112 @@ internal sealed class BridgeServiceTests
         var revoked = store.Issue("tablet", TimeSpan.FromMinutes(5));
         store.Revoke(revoked.AccessToken);
         AssertFalse(store.Validate(revoked.AccessToken), "revoked token rejected");
+    }
+
+    public void NetworkInterfaceServiceReportsPrivateMobileBridgeUrls()
+    {
+        var service = new NetworkInterfaceService(
+            () =>
+            [
+                IPAddress.Parse("127.0.0.1"),
+                IPAddress.Parse("192.168.31.25"),
+                IPAddress.Parse("10.8.0.4"),
+                IPAddress.Parse("100.72.10.9"),
+            ],
+            allowPublicBridgeHosts: false);
+
+        var summary = service.ReadSummary("http", 51870);
+
+        AssertFalse(summary.PublicExposureAllowed, "public exposure should be disabled");
+        AssertTrue(summary.Endpoints.Any(endpoint => endpoint.Url == "http://127.0.0.1:51870"), "loopback URL included");
+        AssertTrue(summary.Endpoints.Any(endpoint => endpoint.Url == "http://192.168.31.25:51870" && endpoint.Scope == "private-lan"), "LAN URL included");
+        AssertTrue(summary.Endpoints.Any(endpoint => endpoint.Url == "http://10.8.0.4:51870" && endpoint.Scope == "private-lan"), "VPN private URL included");
+        AssertTrue(summary.Endpoints.Any(endpoint => endpoint.Url == "http://100.72.10.9:51870" && endpoint.Scope == "mesh-vpn"), "mesh URL included");
+        AssertTrue(summary.Endpoints.All(endpoint => endpoint.RequiresPairing), "every network URL requires pairing");
+    }
+
+    public void NetworkInterfaceServiceHidesPublicHostsUnlessExplicitlyAllowed()
+    {
+        var lockedDown = new NetworkInterfaceService(
+            () => [IPAddress.Parse("8.8.8.8"), IPAddress.Parse("192.168.1.50")],
+            allowPublicBridgeHosts: false);
+
+        var lockedSummary = lockedDown.ReadSummary("http", 5010);
+        AssertFalse(lockedSummary.Endpoints.Any(endpoint => endpoint.Host == "8.8.8.8"), "public host hidden by default");
+        AssertTrue(lockedSummary.Warnings.Any(warning => warning.Contains("public", StringComparison.OrdinalIgnoreCase)), "public host warning present");
+
+        var explicitlyAllowed = new NetworkInterfaceService(
+            () => [IPAddress.Parse("8.8.8.8")],
+            allowPublicBridgeHosts: true);
+
+        var publicSummary = explicitlyAllowed.ReadSummary("https", 9443);
+        AssertTrue(publicSummary.Endpoints.Any(endpoint => endpoint.Url == "https://8.8.8.8:9443"), "explicit public URL included");
+        AssertTrue(publicSummary.PublicExposureAllowed, "public exposure flag recorded");
+    }
+
+    public void NetworkInterfaceServiceAcceptsTemporaryHostOverride()
+    {
+        var previous = Environment.GetEnvironmentVariable("CODEX_MOBILE_BRIDGE_HOSTS");
+        try
+        {
+            Environment.SetEnvironmentVariable("CODEX_MOBILE_BRIDGE_HOSTS", "127.0.0.1,192.168.55.44,not-an-ip");
+
+            var hosts = NetworkInterfaceService.GetLocalIPv4Addresses();
+
+            AssertTrue(hosts.Any(host => host.ToString() == "127.0.0.1"), "loopback override parsed");
+            AssertTrue(hosts.Any(host => host.ToString() == "192.168.55.44"), "private override parsed");
+            AssertFalse(hosts.Any(host => host.ToString() == "not-an-ip"), "invalid override ignored");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CODEX_MOBILE_BRIDGE_HOSTS", previous);
+        }
+    }
+
+    public void SyncServiceUpdatesGoalAndRecordsMobileVisibleEvent()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 5, 31, 11, 0, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        var goal = service.UpdateGoal(new UpdateGoalRequest(
+            "实现手机端查看 Codex 进度并设置 /goal",
+            GoalStatus.Active,
+            "mobile"));
+        var snapshot = service.GetSnapshot();
+
+        AssertEqual(goal.Objective, snapshot.Goal?.Objective, "goal appears in snapshot");
+        AssertEqual("mobile", goal.Source, "goal source preserved");
+        AssertTrue(snapshot.Events.Any(evt => evt.Type == "goal.updated"), "goal event recorded");
+    }
+
+    public void SyncServiceTracksTaskProgressThroughCompletion()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 5, 31, 11, 30, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        var task = service.CreateTask(new CreateCodexTaskRequest(
+            "Bridge real-time sync",
+            "Wire goal and progress endpoints",
+            "conv-1"));
+
+        clock.Advance(TimeSpan.FromMinutes(3));
+        var running = service.UpdateTaskProgress(
+            task.Id,
+            new UpdateCodexTaskProgressRequest(CodexTaskStatus.Running, 55, "Backend endpoints running"));
+
+        AssertEqual(CodexTaskStatus.Running, running.Status, "task running");
+        AssertEqual(55, running.ProgressPercent, "progress updated");
+
+        clock.Advance(TimeSpan.FromMinutes(4));
+        var completed = service.UpdateTaskProgress(
+            task.Id,
+            new UpdateCodexTaskProgressRequest(CodexTaskStatus.Completed, 100, "Verified from mobile"));
+        var snapshot = service.GetSnapshot();
+
+        AssertEqual(CodexTaskStatus.Completed, completed.Status, "task completed");
+        AssertTrue(completed.CompletedAt is not null, "completed timestamp recorded");
+        AssertTrue(snapshot.Tasks.Single(item => item.Id == task.Id).Summary.Contains("Verified", StringComparison.Ordinal), "snapshot has latest summary");
+        AssertTrue(snapshot.Events.Count(evt => evt.Type == "task.updated") >= 2, "task update events recorded");
     }
 
     private static string FindRepositoryRoot()

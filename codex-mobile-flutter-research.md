@@ -9,6 +9,7 @@
 - 在手机端查看和管理 Windows 本机项目。
 - 浏览 Markdown、PDF、JS、代码文件等多种文件。
 - 通过自然语言发起代码分析、修改、测试、命令执行等任务。
+- 在手机端查看 Codex 任务进度、完成情况，并设置 `/goal` 目标。
 - 支持多个子 agent 并行调研、执行和汇总结果。
 - 使用本地 Windows 机器上的 OpenAI API key 或本地 Codex 能力，而不是在手机端暴露密钥。
 
@@ -96,6 +97,6 @@ Windows Bridge/主 agent 负责拆解任务，子 agent 可分为 Explorer、Res
 本仓库实现了调研的 MVP 骨架：
 
 - `bridge/CodexMobile.Bridge` 实现 Windows Bridge。
-- `mobile_app` 实现 Flutter 移动端界面和 Bridge API client。
+- `mobile_app` 实现 Flutter 移动端界面和 Bridge API client，包含 `/goal` 和任务进度面板。
 - `generated/` 保存本地 Codex app-server 协议快照。
-- `scripts/verify.ps1` 执行协议、后端、HTTP smoke、Flutter 的完整验证。
+- `scripts/verify.ps1` 执行协议、后端、HTTP smoke、实时同步流、Flutter 的完整验证。

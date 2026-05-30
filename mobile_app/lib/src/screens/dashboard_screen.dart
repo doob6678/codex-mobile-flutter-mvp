@@ -49,6 +49,16 @@ class DashboardScreen extends StatelessWidget {
                     icon: Icons.verified_user_outlined,
                     onTap: () => onNavigate(5),
                   ),
+                  _SurfaceButton(
+                    label: 'Goals',
+                    icon: Icons.track_changes_outlined,
+                    onTap: () => onNavigate(6),
+                  ),
+                  _SurfaceButton(
+                    label: 'Settings',
+                    icon: Icons.settings_outlined,
+                    onTap: () => onNavigate(7),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),

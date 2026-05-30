@@ -2,13 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/approval.dart';
+import '../models/bridge_network.dart';
 import '../models/codex_file.dart';
 import '../models/conversation.dart';
 import '../models/project.dart';
+import '../models/sync_state.dart';
 import 'bridge_endpoint.dart';
 
 abstract interface class CodexMobileApi {
   Future<BridgeStatus> getStatus();
+
+  void setAccessToken(String? token);
+
+  Future<PairingChallenge> startPairing();
 
   Future<PairingResult> completePairing({
     required String bridgeUrl,
@@ -30,6 +36,19 @@ abstract interface class CodexMobileApi {
   Future<List<ConversationSummary>> listConversations();
 
   Future<List<ApprovalRequest>> listApprovals();
+
+  Future<BridgeNetworkSummary> getNetworkSummary();
+
+  Future<CodexSyncSnapshot> getSyncState();
+
+  Stream<CodexSyncSnapshot> watchSyncState();
+
+  Future<GoalRecord> updateGoal({required String objective});
+
+  Future<CodexTaskRecord> createTask({
+    required String title,
+    required String detail,
+  });
 
   Future<void> resolveApproval({
     required String approvalId,
@@ -72,17 +91,45 @@ class PairingResult {
   }
 }
 
+class PairingChallenge {
+  const PairingChallenge({required this.code, required this.expiresAt});
+
+  final String code;
+  final DateTime expiresAt;
+
+  factory PairingChallenge.fromJson(Map<String, Object?> json) {
+    return PairingChallenge(
+      code: json['code'] as String? ?? '',
+      expiresAt:
+          DateTime.tryParse(json['expiresAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  }
+}
+
 class HttpCodexMobileApi implements CodexMobileApi {
   HttpCodexMobileApi(this.endpoint, {HttpClient? client})
     : _client = client ?? HttpClient();
 
   final BridgeEndpoint endpoint;
   final HttpClient _client;
+  String? _accessToken;
+
+  @override
+  void setAccessToken(String? token) {
+    _accessToken = token?.trim().isEmpty == true ? null : token?.trim();
+  }
 
   @override
   Future<BridgeStatus> getStatus() async {
     final json = await _getObject('/health');
     return BridgeStatus.fromJson(json);
+  }
+
+  @override
+  Future<PairingChallenge> startPairing() async {
+    final json = await _postObject('/pairing/start', const {});
+    return PairingChallenge.fromJson(json);
   }
 
   @override
@@ -93,7 +140,9 @@ class HttpCodexMobileApi implements CodexMobileApi {
     final json = await _postObject('/pairing/complete', {
       'code': pairingCode,
     });
-    return PairingResult.fromJson(json);
+    final result = PairingResult.fromJson(json);
+    setAccessToken(result.token);
+    return result;
   }
 
   @override
@@ -142,6 +191,70 @@ class HttpCodexMobileApi implements CodexMobileApi {
   }
 
   @override
+  Future<BridgeNetworkSummary> getNetworkSummary() async {
+    final json = await _getObject('/network/interfaces');
+    return BridgeNetworkSummary.fromJson(json);
+  }
+
+  @override
+  Future<CodexSyncSnapshot> getSyncState() async {
+    final json = await _getObject('/sync/state');
+    return CodexSyncSnapshot.fromJson(json);
+  }
+
+  @override
+  Stream<CodexSyncSnapshot> watchSyncState() async* {
+    final request = await _client.getUrl(endpoint.uri('/sync/stream'));
+    _applyCommonHeaders(request);
+    request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
+    final response = await request.close();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await utf8.decoder.bind(response).join();
+      throw HttpException('Bridge returned ${response.statusCode}: $body');
+    }
+
+    var dataBuffer = StringBuffer();
+    await for (final line in response
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (line.startsWith('data:')) {
+        dataBuffer.write(line.substring(5).trimLeft());
+        continue;
+      }
+
+      if (line.isEmpty && dataBuffer.isNotEmpty) {
+        final decoded = jsonDecode(dataBuffer.toString());
+        dataBuffer = StringBuffer();
+        if (decoded is Map<String, Object?>) {
+          yield CodexSyncSnapshot.fromJson(decoded);
+        }
+      }
+    }
+  }
+
+  @override
+  Future<GoalRecord> updateGoal({required String objective}) async {
+    final json = await _postObject('/goal', {
+      'objective': objective,
+      'status': 'active',
+      'source': 'mobile',
+    });
+    return GoalRecord.fromJson(json);
+  }
+
+  @override
+  Future<CodexTaskRecord> createTask({
+    required String title,
+    required String detail,
+  }) async {
+    final json = await _postObject('/tasks', {
+      'title': title,
+      'detail': detail,
+    });
+    return CodexTaskRecord.fromJson(json);
+  }
+
+  @override
   Future<void> resolveApproval({
     required String approvalId,
     required ApprovalAction action,
@@ -170,6 +283,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     Map<String, String?> query = const {},
   ]) async {
     final request = await _client.getUrl(endpoint.uri(path, query));
+    _applyCommonHeaders(request);
     return _sendJsonRequest(request);
   }
 
@@ -178,6 +292,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     Map<String, Object?> body,
   ) async {
     final request = await _client.postUrl(endpoint.uri(path));
+    _applyCommonHeaders(request);
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(body));
     final decoded = await _sendJsonRequest(request);
@@ -194,6 +309,12 @@ class HttpCodexMobileApi implements CodexMobileApi {
       throw HttpException('Bridge returned ${response.statusCode}: $body');
     }
     return jsonDecode(body);
+  }
+
+  void _applyCommonHeaders(HttpClientRequest request) {
+    if (_accessToken case final token?) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
   }
 
   List<Map<String, Object?>> _readList(

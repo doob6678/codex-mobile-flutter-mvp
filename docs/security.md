@@ -85,9 +85,18 @@ Audit entries must redact secrets. Suggested fields include timestamp, device id
 - MVP target is LAN or VPN/mesh access, not direct public internet exposure.
 - Prefer HTTPS/WSS even on LAN.
 - Bind only to configured interfaces.
+- `GET /network/interfaces` only reports loopback, private LAN, link-local, and mesh/VPN candidates by default.
+- Public hosts are suppressed unless `CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE=1` is set for an explicit temporary test.
 - Do not expose raw app-server transport to the phone.
 - Expose Codex app-server only through Bridge allowlisted methods; direct `fs/writeFile`, process, and command execution methods must stay behind approval-specific routes.
 - A cloud relay, if added later, should route encrypted messages only and must not store source code, long-lived tokens, or OpenAI keys.
+
+## Goal And Task Sync
+
+- Mobile `/goal` writes and task creation are protected by pairing tokens.
+- Windows/Codex-side task progress updates go through `/tasks/{id}/progress`.
+- `/sync/state` and `/sync/stream` return redacted progress state only; they do not expose raw Codex auth files, OpenAI keys, or command output beyond approved summaries.
+- Real-time sync uses Bridge-owned state and short-lived paired-device access, so both phone and Windows see the same goal/task lifecycle without placing secrets on the phone.
 
 ## Codex App UI Synchronization
 

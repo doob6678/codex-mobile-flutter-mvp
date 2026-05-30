@@ -38,6 +38,14 @@ The token represents the paired device, not an OpenAI account. OpenAI and Codex 
 | `POST` | `/codex/raw` | Restricted JSON-RPC bridge for allowlisted app-server methods only. |
 | `POST` | `/pairing/start` | Create a short-lived pairing challenge and QR payload. |
 | `POST` | `/pairing/complete` | Exchange a challenge response for mobile access and refresh tokens. |
+| `GET` | `/network/interfaces` | Report loopback, private LAN, and mesh/VPN bridge URLs while hiding public hosts by default. |
+| `GET` | `/sync/state` | Return the current `/goal`, tracked Codex tasks, and sync events. |
+| `GET` | `/sync/stream` | Push live sync snapshots through server-sent events. |
+| `GET` | `/goal` | Read the current `/goal` objective. |
+| `POST` | `/goal` | Set or replace the current `/goal` objective from mobile. |
+| `GET` | `/tasks` | Read task progress and completion records. |
+| `POST` | `/tasks` | Create a mobile-visible Codex task record. |
+| `POST` | `/tasks/{id}/progress` | Update task status, progress percent, and summary. |
 | `GET` | `/projects` | List authorized project roots. |
 | `POST` | `/projects` | Add an authorized project root after local confirmation. |
 | `GET` | `/files/list` | List one directory under an authorized root. |
@@ -75,8 +83,16 @@ Mobile event names:
 - `command.finished`
 - `file.changed`
 - `task.status_changed`
+- `goal.updated`
+- `task.updated`
 
 These events are derived from generated app-server notifications such as `thread/started`, `turn/started`, `item/agentMessage/delta`, `command/exec/outputDelta`, `item/fileChange/patchUpdated`, `fs/changed`, and `serverRequest/resolved`.
+
+## Real-Time Sync
+
+`/sync/stream` sends the current snapshot immediately, then sends a new snapshot whenever the Bridge receives a goal or task update. This gives the Flutter app bidirectional sync without exposing Codex credentials: mobile can set `/goal` and task intent through protected REST calls, while Windows/Codex-side work reports progress back through the same Bridge state and event stream.
+
+Temporary network test hosts can be injected with `CODEX_MOBILE_BRIDGE_HOSTS=127.0.0.1,192.168.55.44,100.72.10.9`; public hosts remain hidden unless `CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE=1` is explicitly set.
 
 ## Codex App-Server Adapter
 

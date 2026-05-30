@@ -5,6 +5,7 @@ import 'approvals_screen.dart';
 import 'conversations_screen.dart';
 import 'dashboard_screen.dart';
 import 'file_manager_screen.dart';
+import 'goals_screen.dart';
 import 'pairing_screen.dart';
 import 'projects_screen.dart';
 import 'settings_screen.dart';
@@ -31,7 +32,8 @@ class _AppShellState extends State<AppShell> {
       FileManagerScreen(api: widget.api),
       ConversationsScreen(api: widget.api),
       ApprovalsScreen(api: widget.api),
-      const SettingsScreen(),
+      GoalsScreen(api: widget.api),
+      SettingsScreen(api: widget.api),
     ];
 
     return Scaffold(
@@ -92,6 +94,11 @@ class _AppShellState extends State<AppShell> {
         icon: Icon(Icons.verified_user_outlined),
         selectedIcon: Icon(Icons.verified_user),
         label: Text('Approvals'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.track_changes_outlined),
+        selectedIcon: Icon(Icons.track_changes),
+        label: Text('Goals'),
       ),
       NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),

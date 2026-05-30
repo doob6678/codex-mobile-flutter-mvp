@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_app/main.dart';
 import 'package:mobile_app/src/api/codex_mobile_api.dart';
 import 'package:mobile_app/src/models/approval.dart';
+import 'package:mobile_app/src/models/bridge_network.dart';
 import 'package:mobile_app/src/models/codex_file.dart';
 import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
+import 'package:mobile_app/src/models/sync_state.dart';
 
 void main() {
   testWidgets('navigation exposes all MVP surfaces', (tester) async {
@@ -18,6 +20,7 @@ void main() {
     expect(find.text('Files'), findsWidgets);
     expect(find.text('Conversations'), findsWidgets);
     expect(find.text('Approvals'), findsWidgets);
+    expect(find.text('Goals'), findsWidgets);
     expect(find.text('Settings'), findsWidgets);
   });
 
@@ -69,6 +72,23 @@ void main() {
       find.textContaining('never expose the Windows Bridge'),
       findsOneWidget,
     );
+    expect(find.text('http://192.168.31.25:5010'), findsOneWidget);
+    expect(find.textContaining('pairing token required'), findsWidgets);
+    expect(find.textContaining('Skipped public host 8.8.8.8'), findsOneWidget);
+  });
+
+  testWidgets('goals screen renders goal and task progress', (tester) async {
+    await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Goals').last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('/goal objective'), findsOneWidget);
+    expect(find.text('实现手机端查看 Codex 任务进度和完成情况'), findsOneWidget);
+    expect(find.text('Bridge sync'), findsOneWidget);
+    expect(find.text('90%'), findsOneWidget);
+    expect(find.textContaining('Live sync connected'), findsOneWidget);
   });
 }
 
@@ -150,4 +170,91 @@ class _FakeApi implements CodexMobileApi {
     required String approvalId,
     required ApprovalAction action,
   }) async {}
+
+  @override
+  void setAccessToken(String? token) {}
+
+  @override
+  Future<PairingChallenge> startPairing() async => PairingChallenge(
+    code: '123456',
+    expiresAt: DateTime.utc(2026),
+  );
+
+  @override
+  Future<BridgeNetworkSummary> getNetworkSummary() async =>
+      const BridgeNetworkSummary(
+        scheme: 'http',
+        port: 5010,
+        publicExposureAllowed: false,
+        endpoints: [
+          BridgeNetworkEndpoint(
+            host: '127.0.0.1',
+            url: 'http://127.0.0.1:5010',
+            scope: 'loopback',
+            requiresPairing: true,
+            isRecommendedForMobile: false,
+          ),
+          BridgeNetworkEndpoint(
+            host: '192.168.31.25',
+            url: 'http://192.168.31.25:5010',
+            scope: 'private-lan',
+            requiresPairing: true,
+            isRecommendedForMobile: true,
+          ),
+        ],
+        warnings: ['Skipped public host 8.8.8.8'],
+      );
+
+  @override
+  Future<CodexSyncSnapshot> getSyncState() async => CodexSyncSnapshot(
+    goal: GoalRecord(
+      id: 'goal-1',
+      objective: '实现手机端查看 Codex 任务进度和完成情况',
+      status: GoalStatus.active,
+      source: 'mobile',
+      updatedAt: DateTime.utc(2026),
+    ),
+    tasks: [
+      CodexTaskRecord(
+        id: 'task-1',
+        title: 'Bridge sync',
+        detail: 'Wire goal endpoint',
+        status: CodexTaskStatus.running,
+        progressPercent: 90,
+        summary: 'Live sync connected',
+        updatedAt: DateTime.utc(2026),
+      ),
+    ],
+    updatedAt: DateTime.utc(2026),
+  );
+
+  @override
+  Stream<CodexSyncSnapshot> watchSyncState() async* {
+    yield await getSyncState();
+  }
+
+  @override
+  Future<GoalRecord> updateGoal({required String objective}) async =>
+      GoalRecord(
+        id: 'goal-1',
+        objective: objective,
+        status: GoalStatus.active,
+        source: 'mobile',
+        updatedAt: DateTime.utc(2026),
+      );
+
+  @override
+  Future<CodexTaskRecord> createTask({
+    required String title,
+    required String detail,
+  }) async =>
+      CodexTaskRecord(
+        id: 'task-2',
+        title: title,
+        detail: detail,
+        status: CodexTaskStatus.pending,
+        progressPercent: 0,
+        summary: detail,
+        updatedAt: DateTime.utc(2026),
+      );
 }

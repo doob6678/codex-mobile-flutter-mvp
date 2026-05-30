@@ -5,7 +5,7 @@ This repository implements the MVP path from `codex-mobile-flutter-research.md`:
 ## What Is Included
 
 - `bridge/CodexMobile.Bridge`: .NET 8 ASP.NET Core Minimal API Bridge.
-- `mobile_app`: Flutter Material 3 client with pairing, dashboard, projects, files, conversations, approvals, and settings screens.
+- `mobile_app`: Flutter Material 3 client with pairing, dashboard, projects, files, conversations, approvals, live goals/tasks, and settings screens.
 - `generated/`: local `codex app-server` TypeScript and JSON Schema protocol snapshots.
 - `docs/`: API, security, protocol asset, testing, and Superpowers plan documents.
 - `scripts/verify.ps1`: end-to-end local verification script.
@@ -29,6 +29,8 @@ Invoke-RestMethod -Uri http://127.0.0.1:5010/protocol/summary
 Invoke-RestMethod -Uri http://127.0.0.1:5010/codex/status
 ```
 
+Pairing is required before mobile-visible project, network, goal, task, and Codex endpoints can be used. After pairing, the mobile app can set `/goal`, read task progress, and receive live state snapshots from `/sync/stream`.
+
 ## Flutter
 
 Run the mobile client:
@@ -49,6 +51,18 @@ powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
 ```
 
 This checks docs and generated Codex protocol assets, runs Bridge service tests, starts the Bridge for HTTP smoke checks, then runs `flutter analyze` and `flutter test`.
+
+The smoke flow also exercises real protected HTTP behavior: pairing token exchange, private/mesh network URL reporting, `/goal` update, task creation/completion, `/sync/state`, and the first event from the live `/sync/stream`.
+
+## Packaging
+
+For a simple two-part release, build the Windows Bridge and mobile app:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1
+```
+
+The script publishes a Windows Bridge server and builds the Flutter client for available local targets. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need the produced app and the Windows Bridge folder.
 
 ## Security Boundary
 
