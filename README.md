@@ -73,7 +73,7 @@ For a simple two-part release, build the Windows Bridge and mobile app:
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-The script publishes a Windows Bridge server and builds the Flutter client for available local targets. The Bridge package includes its own `start-bridge.ps1`; end users can run that script from `dist\bridge-framework-dependent` after installing the .NET 8 runtime. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need the produced app and the Windows Bridge folder.
+The script publishes a Windows Bridge server, then tries to build the Android APK first and the Windows desktop client second. The Bridge package includes its own `start-bridge.ps1`; end users can run that script from `dist\bridge-framework-dependent` after installing the .NET 8 runtime. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need `dist\mobile-android\app-release.apk` and the Windows Bridge folder.
 
 ## Security Boundary
 

@@ -84,7 +84,14 @@ public sealed class CodexAppServerGateway
 
     public Task<CodexAppServerJsonResponse> ReadThreadAsync(string threadId, CancellationToken cancellationToken = default)
     {
-        return CallAsync("thread/read", new Dictionary<string, object?> { ["threadId"] = threadId }, cancellationToken);
+        return CallAsync(
+            "thread/read",
+            new Dictionary<string, object?>
+            {
+                ["threadId"] = threadId,
+                ["includeTurns"] = true,
+            },
+            cancellationToken);
     }
 
     public Task<CodexAppServerJsonResponse> StartThreadAsync(StartCodexThreadRequest request, CancellationToken cancellationToken = default)

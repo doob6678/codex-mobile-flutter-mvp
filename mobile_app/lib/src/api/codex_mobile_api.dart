@@ -4,6 +4,7 @@ import 'dart:io';
 import '../models/approval.dart';
 import '../models/bridge_network.dart';
 import '../models/codex_file.dart';
+import '../models/codex_thread.dart';
 import '../models/conversation.dart';
 import '../models/project.dart';
 import '../models/sync_state.dart';
@@ -34,6 +35,10 @@ abstract interface class CodexMobileApi {
   });
 
   Future<List<ConversationSummary>> listConversations();
+
+  Future<List<CodexThreadGroup>> listCodexThreadGroups();
+
+  Future<CodexThreadDetail> readCodexThread({required String threadId});
 
   Future<List<ApprovalRequest>> listApprovals();
 
@@ -182,6 +187,18 @@ class HttpCodexMobileApi implements CodexMobileApi {
       json,
       'conversations',
     ).map(ConversationSummary.fromJson).toList();
+  }
+
+  @override
+  Future<List<CodexThreadGroup>> listCodexThreadGroups() async {
+    final json = await _getJson('/codex/threads');
+    return CodexThreadCollection.fromJson(json).groups;
+  }
+
+  @override
+  Future<CodexThreadDetail> readCodexThread({required String threadId}) async {
+    final json = await _getJson('/codex/threads/$threadId');
+    return CodexThreadDetail.fromJson(json);
   }
 
   @override

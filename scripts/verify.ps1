@@ -217,6 +217,20 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
                 throw "Codex app-server status response is malformed."
             }
 
+            if ($codexStatus.available) {
+                $threads = Invoke-RestMethod -Uri "$smokeUrl/codex/threads" -Headers $headers -UseBasicParsing
+                if ($threads.method -ne 'thread/list' -or $null -eq $threads.json) {
+                    throw "Codex thread list response is malformed."
+                }
+                if ($threads.json.data.Count -gt 0) {
+                    $threadId = $threads.json.data[0].id
+                    $thread = Invoke-RestMethod -Uri "$smokeUrl/codex/threads/$threadId" -Headers $headers -UseBasicParsing
+                    if ($thread.method -ne 'thread/read' -or $null -eq $thread.json.thread) {
+                        throw "Codex thread read response is malformed."
+                    }
+                }
+            }
+
             $network = Invoke-RestMethod -Uri "$smokeUrl/network/interfaces" -Headers $headers -UseBasicParsing
             if ($network.publicExposureAllowed) {
                 throw "Public bridge exposure should be disabled by default."
@@ -270,6 +284,9 @@ if (Test-Path -LiteralPath 'bridge' -PathType Container) {
                 $projects = Invoke-RestMethod -Uri "$smokeUrl/projects" -Headers $headers -UseBasicParsing
                 if (-not ($projects | Where-Object { $_.name -eq $knowledgeProjectName })) {
                     throw "Default knowledge project was not loaded."
+                }
+                if (-not ($projects | Where-Object { $_.rootPath -eq $RepoRoot })) {
+                    throw "Repository root project from Codex config was not loaded."
                 }
 
                 $knowledgeProject = $projects | Where-Object { $_.name -eq $knowledgeProjectName } | Select-Object -First 1

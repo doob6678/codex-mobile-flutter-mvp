@@ -16,7 +16,6 @@ Write-Host "==> Publishing Windows Bridge"
 $bridgeOut = Join-Path $DistRoot 'bridge-framework-dependent'
 dotnet publish 'bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj' `
     -c Release `
-    --no-restore `
     --no-self-contained `
     -p:SelfContained=false `
     -p:PublishSingleFile=false `
@@ -64,17 +63,7 @@ Set-Content -LiteralPath (Join-Path $bridgeOut 'start-bridge.ps1') -Encoding UTF
 if (Test-Path -LiteralPath 'mobile_app' -PathType Container) {
     Push-Location 'mobile_app'
     try {
-        Write-Host "==> Building Flutter Windows client"
-        flutter build windows --release
-        if ($LASTEXITCODE -ne 0) {
-            throw "Flutter Windows build failed."
-        }
-
-        $windowsOut = Join-Path $DistRoot 'mobile-windows'
-        New-Item -ItemType Directory -Force -Path $windowsOut | Out-Null
-        Copy-Item -Recurse -Force -Path 'build\windows\x64\runner\Release\*' -Destination $windowsOut
-
-        Write-Host "==> Building Flutter Android APK when Android toolchain is available"
+        Write-Host "==> Building Flutter Android APK"
         flutter build apk --release
         if ($LASTEXITCODE -eq 0) {
             $apkOut = Join-Path $DistRoot 'mobile-android'
@@ -82,7 +71,18 @@ if (Test-Path -LiteralPath 'mobile_app' -PathType Container) {
             Copy-Item -Force -Path 'build\app\outputs\flutter-apk\app-release.apk' -Destination $apkOut
         }
         else {
-            Write-Host "Android APK build skipped or failed; Windows client and Bridge package remain available."
+            Write-Host "Android APK build skipped or failed; Bridge package remains available."
+        }
+
+        Write-Host "==> Building Flutter Windows client when the toolchain is available"
+        flutter build windows --release
+        if ($LASTEXITCODE -eq 0) {
+            $windowsOut = Join-Path $DistRoot 'mobile-windows'
+            New-Item -ItemType Directory -Force -Path $windowsOut | Out-Null
+            Copy-Item -Recurse -Force -Path 'build\windows\x64\runner\Release\*' -Destination $windowsOut
+        }
+        else {
+            Write-Host "Windows client build skipped or failed; Bridge and Android artifacts remain available."
         }
     }
     finally {

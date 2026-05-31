@@ -20,6 +20,12 @@ builder.Services.AddSingleton(sp =>
 {
     var store = new ProjectStore();
     var configuration = sp.GetRequiredService<IConfiguration>();
+    var codexConfigPath = configuration["Codex:ConfigPath"]
+        ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".codex",
+            "config.toml");
+    store.AddTrustedProjectsFromCodexConfig(codexConfigPath);
     store.AddConfiguredProjects(configuration["DefaultProjects"]);
     store.AddConfiguredProjects(Environment.GetEnvironmentVariable("CODEX_MOBILE_DEFAULT_PROJECTS"));
     return store;

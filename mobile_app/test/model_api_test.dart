@@ -3,6 +3,7 @@ import 'package:mobile_app/src/api/bridge_endpoint.dart';
 import 'package:mobile_app/src/models/approval.dart';
 import 'package:mobile_app/src/models/bridge_network.dart';
 import 'package:mobile_app/src/models/codex_file.dart';
+import 'package:mobile_app/src/models/codex_thread.dart';
 import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
 import 'package:mobile_app/src/models/sync_state.dart';
@@ -73,6 +74,105 @@ void main() {
       expect(conversation.updatedAt.toUtc().year, 2026);
       expect(conversation.latestMessage, 'Pairing completed');
       expect(conversation.unreadCount, 2);
+    });
+
+    test('CodexThreadSummary reads app-server thread list entries', () {
+      final thread = CodexThreadSummary.fromJson({
+        'id': 'thread_123',
+        'name': null,
+        'preview': '整理 Java Harness 文档',
+        'cwd':
+            r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+        'updatedAt': 1780207200,
+        'status': 'running',
+      });
+
+      expect(thread.id, 'thread_123');
+      expect(thread.title, '整理 Java Harness 文档');
+      expect(thread.projectName, '调研Java_Harness');
+      expect(thread.projectPath, contains('调研Java_Harness'));
+      expect(thread.status, 'running');
+      expect(thread.updatedAt.toUtc().year, 2026);
+    });
+
+    test('CodexThreadCollection groups app-server threads by project folder', () {
+      final groups = CodexThreadCollection.fromJson({
+        'method': 'thread/list',
+        'json': {
+          'data': [
+            {
+              'id': 'thread_1',
+              'name': '实现手机小说 Agent',
+              'preview': 'fallback',
+              'cwd':
+                  r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+              'updatedAt': 1780207200,
+              'status': 'completed',
+            },
+            {
+              'id': 'thread_2',
+              'name': null,
+              'preview': '读取课程文档并转MD',
+              'cwd': r'C:\Users\doob\Desktop\个人资料\鱼皮知识库',
+              'updatedAt': 1780120800,
+              'status': 'idle',
+            },
+          ],
+        },
+      }).groups;
+
+      expect(groups.map((group) => group.projectName), [
+        '调研Java_Harness',
+        '鱼皮知识库',
+      ]);
+      expect(groups.first.threads.single.title, '实现手机小说 Agent');
+      expect(groups.last.threads.single.title, '读取课程文档并转MD');
+    });
+
+    test('CodexThreadDetail extracts readable messages from thread read response', () {
+      final detail = CodexThreadDetail.fromJson({
+        'method': 'thread/read',
+        'json': {
+          'thread': {
+            'id': 'thread_1',
+            'name': '实现调研目标并测试',
+            'preview': 'fallback',
+            'cwd': r'C:\Users\doob\Desktop\code\dev\codex_mobile_app',
+            'updatedAt': 1780207200,
+            'status': 'idle',
+            'turns': [
+              {
+                'items': [
+                  {
+                    'type': 'userMessage',
+                    'content': [
+                      {'type': 'text', 'text': '手机端和 Windows 端同步'},
+                    ],
+                  },
+                  {
+                    'type': 'agentMessage',
+                    'text': '已读取真实 Codex 线程',
+                  },
+                  {
+                    'type': 'commandExecution',
+                    'command': 'flutter test',
+                    'aggregatedOutput': 'All tests passed',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      expect(detail.thread.title, '实现调研目标并测试');
+      expect(detail.messages.map((message) => message.role), [
+        'user',
+        'assistant',
+        'command',
+      ]);
+      expect(detail.messages.first.text, contains('Windows'));
+      expect(detail.messages.last.text, contains('All tests passed'));
     });
 
     test('ApprovalRequest reads commands and available actions', () {

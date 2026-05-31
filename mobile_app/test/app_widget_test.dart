@@ -5,6 +5,7 @@ import 'package:mobile_app/src/api/codex_mobile_api.dart';
 import 'package:mobile_app/src/models/approval.dart';
 import 'package:mobile_app/src/models/bridge_network.dart';
 import 'package:mobile_app/src/models/codex_file.dart';
+import 'package:mobile_app/src/models/codex_thread.dart';
 import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
 import 'package:mobile_app/src/models/sync_state.dart';
@@ -54,6 +55,28 @@ void main() {
     expect(find.text('Run Flutter tests'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Reject'), findsOneWidget);
+  });
+
+  testWidgets('conversations screen renders real Codex thread history by project', (
+    tester,
+  ) async {
+    await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Conversations').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('调研Java_Harness'), findsOneWidget);
+    expect(find.text('实现手机小说 Agent'), findsOneWidget);
+    expect(find.text('整理 Java Harness 文档'), findsOneWidget);
+    expect(find.text('codex_mobile_app'), findsOneWidget);
+    expect(find.text('实现调研目标并测试'), findsOneWidget);
+
+    await tester.tap(find.text('实现调研目标并测试'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('手机端和 Windows 端同步'), findsOneWidget);
+    expect(find.text('已读取真实 Codex 线程'), findsOneWidget);
   });
 
   testWidgets('settings includes release bridge safety text', (tester) async {
@@ -185,6 +208,70 @@ class _FakeApi implements CodexMobileApi {
       unreadCount: 1,
     ),
   ];
+
+  @override
+  Future<List<CodexThreadGroup>> listCodexThreadGroups() async => [
+    CodexThreadGroup(
+      projectName: '调研Java_Harness',
+      projectPath:
+          r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+      threads: [
+        CodexThreadSummary(
+          id: 'thread-1',
+          title: '实现手机小说 Agent',
+          preview: '移动端小说 Agent 功能继续实现',
+          projectName: '调研Java_Harness',
+          projectPath:
+              r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+          status: 'running',
+          updatedAt: DateTime.utc(2026, 5, 31, 10),
+        ),
+        CodexThreadSummary(
+          id: 'thread-2',
+          title: '整理 Java Harness 文档',
+          preview: '离线讲义和知识库整理',
+          projectName: '调研Java_Harness',
+          projectPath:
+              r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+          status: 'completed',
+          updatedAt: DateTime.utc(2026, 5, 30, 12),
+        ),
+      ],
+    ),
+    CodexThreadGroup(
+      projectName: 'codex_mobile_app',
+      projectPath: r'C:\Users\doob\Desktop\code\dev\codex_mobile_app',
+      threads: [
+        CodexThreadSummary(
+          id: 'thread-3',
+          title: '实现调研目标并测试',
+          preview: '手机端和 Windows Bridge 同步开发',
+          projectName: 'codex_mobile_app',
+          projectPath: r'C:\Users\doob\Desktop\code\dev\codex_mobile_app',
+          status: 'running',
+          updatedAt: DateTime.utc(2026, 5, 31, 11),
+        ),
+      ],
+    ),
+  ];
+
+  @override
+  Future<CodexThreadDetail> readCodexThread({required String threadId}) async =>
+      CodexThreadDetail(
+        thread: CodexThreadSummary(
+          id: threadId,
+          title: '实现调研目标并测试',
+          preview: '手机端和 Windows Bridge 同步开发',
+          projectName: 'codex_mobile_app',
+          projectPath: r'C:\Users\doob\Desktop\code\dev\codex_mobile_app',
+          status: 'idle',
+          updatedAt: DateTime.utc(2026, 5, 31, 11),
+        ),
+        messages: const [
+          CodexThreadMessage(role: 'user', text: '手机端和 Windows 端同步'),
+          CodexThreadMessage(role: 'assistant', text: '已读取真实 Codex 线程'),
+        ],
+      );
 
   @override
   Future<List<ApprovalRequest>> listApprovals() async => const [

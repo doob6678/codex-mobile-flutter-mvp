@@ -11,6 +11,7 @@ var cases = new (string Name, Action Test)[]
     ("file service reads text and hashes content", tests.FileServiceReadsAndHashesText),
     ("file service marks markdown files for mobile reading", tests.FileServiceMarksMarkdownFilesForMobileReading),
     ("project store loads default knowledge projects from environment format", tests.ProjectStoreLoadsDefaultKnowledgeProjectsFromEnvironmentFormat),
+    ("project store loads trusted Codex projects from config", tests.ProjectStoreLoadsTrustedCodexProjectsFromConfig),
     ("file patch rejects stale hashes and applies matching content", tests.FilePatchUsesExpectedHash),
     ("pairing token expires and cannot be reused", tests.PairingTokenExpiresAndCannotBeReused),
     ("command service rejects commands outside allowlist", tests.CommandServiceRejectsUnsafeCommands),
@@ -128,6 +129,37 @@ internal sealed class BridgeServiceTests
         AssertEqual(root, project.RootPath, "configured root canonicalized");
     }
 
+    public void ProjectStoreLoadsTrustedCodexProjectsFromConfig()
+    {
+        using var workspace = new TempWorkspace();
+        var trusted = workspace.CreateDirectory("trusted-project");
+        var untrusted = workspace.CreateDirectory("untrusted-project");
+        var sensitive = workspace.CreateDirectory(".codex");
+        var config = Path.Combine(workspace.RootPath, "config.toml");
+        File.WriteAllText(
+            config,
+            $"""
+            [projects.'{trusted}']
+            trust_level = "trusted"
+
+            [projects.'{untrusted}']
+            trust_level = "untrusted"
+
+            [projects.'{sensitive}']
+            trust_level = "trusted"
+            """,
+            Encoding.UTF8);
+
+        var store = new ProjectStore();
+
+        var added = store.AddTrustedProjectsFromCodexConfig(config);
+
+        AssertEqual(1, added, "only trusted project roots are loaded");
+        var project = store.ListProjects().Single();
+        AssertEqual(Path.GetFileName(trusted), project.Name, "project name from folder");
+        AssertEqual(trusted, project.RootPath, "trusted project path");
+    }
+
     public void FilePatchUsesExpectedHash()
     {
         using var workspace = new TempWorkspace();
@@ -235,15 +267,20 @@ internal sealed class BridgeServiceTests
         client.Enqueue("config/read", new Dictionary<string, object?> { ["model"] = "gpt-5.5" });
         client.Enqueue("account/read", new Dictionary<string, object?> { ["authMode"] = "chatgpt" });
         client.Enqueue("thread/list", new Dictionary<string, object?> { ["items"] = Array.Empty<object>() });
+        client.Enqueue("thread/read", new Dictionary<string, object?> { ["thread"] = new Dictionary<string, object?>() });
         var gateway = new CodexAppServerGateway(client);
 
         var config = gateway.ReadConfigAsync().GetAwaiter().GetResult();
         var account = gateway.ReadAccountAsync().GetAwaiter().GetResult();
         var threads = gateway.ListThreadsAsync().GetAwaiter().GetResult();
+        _ = gateway.ReadThreadAsync("thread-1").GetAwaiter().GetResult();
 
         AssertEqual("config/read", client.Calls[0].Method, "config method");
         AssertEqual("account/read", client.Calls[1].Method, "account method");
         AssertEqual("thread/list", client.Calls[2].Method, "thread list method");
+        AssertEqual("thread/read", client.Calls[3].Method, "thread read method");
+        var readParams = (Dictionary<string, object?>)client.Calls[3].Parameters!;
+        AssertTrue(readParams.TryGetValue("includeTurns", out var includeTurns) && includeTurns is true, "thread read includes turns");
         AssertTrue(config.Json.GetProperty("model").GetString() == "gpt-5.5", "config payload preserved");
         AssertTrue(account.Json.GetProperty("authMode").GetString() == "chatgpt", "account payload preserved");
         AssertTrue(threads.Json.TryGetProperty("items", out _), "thread payload preserved");
@@ -512,6 +549,8 @@ internal sealed class FakeCodexAppServerClient : ICodexAppServerClient
 internal sealed class TempWorkspace : IDisposable
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), "codex-mobile-bridge-tests", Guid.NewGuid().ToString("N"));
+
+    public string RootPath => root;
 
     public string CreateDirectory(string name)
     {

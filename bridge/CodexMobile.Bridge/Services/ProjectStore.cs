@@ -48,9 +48,66 @@ public sealed class ProjectStore
         return added;
     }
 
+    public int AddTrustedProjectsFromCodexConfig(string? configPath)
+    {
+        if (string.IsNullOrWhiteSpace(configPath) || !File.Exists(configPath))
+        {
+            return 0;
+        }
+
+        var added = 0;
+        string? currentPath = null;
+        var currentTrusted = false;
+
+        foreach (var rawLine in File.ReadLines(configPath))
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith("[projects.'", StringComparison.Ordinal) && line.EndsWith("']", StringComparison.Ordinal))
+            {
+                if (currentPath is not null && currentTrusted && TryAddConfiguredProject(Path.GetFileName(currentPath), currentPath))
+                {
+                    added++;
+                }
+
+                currentPath = line["[projects.'".Length..^2];
+                currentTrusted = false;
+                continue;
+            }
+
+            if (currentPath is null)
+            {
+                continue;
+            }
+
+            if (line.StartsWith("trust_level", StringComparison.OrdinalIgnoreCase))
+            {
+                currentTrusted = line.Contains("\"trusted\"", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (line.Length == 0 && currentTrusted)
+            {
+                if (TryAddConfiguredProject(Path.GetFileName(currentPath), currentPath))
+                {
+                    added++;
+                }
+
+                currentPath = null;
+                currentTrusted = false;
+            }
+        }
+
+        if (currentPath is not null && currentTrusted && TryAddConfiguredProject(Path.GetFileName(currentPath), currentPath))
+        {
+            added++;
+        }
+
+        return added;
+    }
+
     public bool TryAddConfiguredProject(string name, string rootPath)
     {
-        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath) || IsSensitiveRoot(rootPath))
         {
             return false;
         }
@@ -131,6 +188,15 @@ public sealed class ProjectStore
             left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSensitiveRoot(string rootPath)
+    {
+        var normalized = Path.GetFullPath(rootPath);
+        var segments = normalized.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return segments.Any(segment => string.Equals(segment, ".codex", StringComparison.OrdinalIgnoreCase))
+            || segments.Any(segment => string.Equals(segment, ".ssh", StringComparison.OrdinalIgnoreCase))
+            || normalized.Contains($"{Path.DirectorySeparatorChar}AppData{Path.DirectorySeparatorChar}Roaming{Path.DirectorySeparatorChar}Microsoft{Path.DirectorySeparatorChar}Credentials", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NewId(string prefix) => $"{prefix}_{Guid.NewGuid():N}";

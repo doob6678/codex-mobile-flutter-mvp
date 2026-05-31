@@ -19,13 +19,13 @@
 - Generate: `generated/codex-app-server-ts/**`
 - Generate: `generated/codex-app-server-schema/**`
 
-- [ ] **Step 1: Initialize Git and feature branch**
+- [x] **Step 1: Initialize Git and feature branch**
 
 Run: `git init -b main && git checkout -b feature/codex-mobile-mvp`
 
 Expected: repository exists on `feature/codex-mobile-mvp`.
 
-- [ ] **Step 2: Generate Codex protocol assets**
+- [x] **Step 2: Generate Codex protocol assets**
 
 Run:
 
@@ -37,11 +37,11 @@ codex app-server generate-json-schema --experimental --out generated\codex-app-s
 
 Expected: generated files include `generated/codex-app-server-ts/v2/ThreadStartParams.ts` and `generated/codex-app-server-schema/codex_app_server_protocol.v2.schemas.json`.
 
-- [ ] **Step 3: Document protocol source and supported MVP mapping**
+- [x] **Step 3: Document protocol source and supported MVP mapping**
 
 Create `docs/protocol-assets.md` with the exact generation commands, local CLI version, and the Bridge endpoints that map to Codex concepts: config/account summary, thread list/read/start, turn events, approval cards, and filesystem read/list.
 
-- [ ] **Step 4: Commit baseline**
+- [x] **Step 4: Commit baseline**
 
 Run:
 
@@ -62,7 +62,7 @@ git commit -m "chore: initialize codex mobile mvp baseline"
 - Create: `bridge/CodexMobile.Bridge/Hubs/BridgeHub.cs`
 - Create: `bridge/CodexMobile.Bridge.Tests/*.cs`
 
-- [ ] **Step 1: Write failing tests first**
+- [x] **Step 1: Write failing tests first**
 
 Add xUnit tests for path canonicalization, project whitelist enforcement, text file reading, patch hash mismatch rejection, command allowlist rejection, pairing token expiry, and audit log redaction.
 
@@ -70,7 +70,7 @@ Run: `dotnet test bridge/CodexMobile.Bridge.Tests/CodexMobile.Bridge.Tests.cspro
 
 Expected before implementation: FAIL because services do not exist.
 
-- [ ] **Step 2: Implement minimal Bridge**
+- [x] **Step 2: Implement minimal Bridge**
 
 Implement Minimal API endpoints:
 
@@ -98,13 +98,13 @@ POST /commands/run
 
 Add SignalR hub at `/hubs/events` for `message.created`, `approval.requested`, `patch.proposed`, and `command.finished`.
 
-- [ ] **Step 3: Verify backend tests**
+- [x] **Step 3: Verify backend tests**
 
 Run: `dotnet test bridge/CodexMobile.Bridge.Tests/CodexMobile.Bridge.Tests.csproj`
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit backend**
+- [x] **Step 4: Commit backend**
 
 Run:
 
@@ -123,13 +123,13 @@ git commit -m "feat: add tested windows bridge backend"
 - Create: `mobile_app/lib/src/screens/*.dart`
 - Create: `mobile_app/test/*.dart`
 
-- [ ] **Step 1: Scaffold Flutter app**
+- [x] **Step 1: Scaffold Flutter app**
 
 Run: `flutter create --platforms=android,windows mobile_app`
 
 Expected: Flutter app exists with Material baseline.
 
-- [ ] **Step 2: Write failing widget/model tests first**
+- [x] **Step 2: Write failing widget/model tests first**
 
 Add tests for JSON parsing, service URL construction, navigation surfaces, project/file list rendering, approval action rendering, and release bridge safety text.
 
@@ -137,11 +137,11 @@ Run: `flutter test`
 
 Expected before implementation: FAIL because app models/screens are absent.
 
-- [ ] **Step 3: Implement MVP UI and API client**
+- [x] **Step 3: Implement MVP UI and API client**
 
 Implement screens: pairing, dashboard, projects, file manager, file preview, conversations, approvals, settings. Use injectable `CodexMobileApi` so widget tests run without a live server.
 
-- [ ] **Step 4: Verify Flutter tests and analysis**
+- [x] **Step 4: Verify Flutter tests and analysis**
 
 Run:
 
@@ -153,7 +153,7 @@ flutter test
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Flutter client**
+- [x] **Step 5: Commit Flutter client**
 
 Run:
 
@@ -171,21 +171,21 @@ git commit -m "feat: add flutter codex mobile client"
 - Create: `docs/testing.md`
 - Create: `scripts/verify.ps1`
 
-- [ ] **Step 1: Add verification script**
+- [x] **Step 1: Add verification script**
 
 Create `scripts/verify.ps1` to run backend tests, Flutter analyze, Flutter tests, and generated protocol asset checks.
 
-- [ ] **Step 2: Add docs**
+- [x] **Step 2: Add docs**
 
 Document local setup, pairing, project whitelist, file permissions, command approvals, audit logs, generated Codex app-server assets, and limitations of official Codex App UI synchronization.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts/verify.ps1`
 
 Expected: all checks pass.
 
-- [ ] **Step 4: Final commit and GitHub push**
+- [x] **Step 4: Final commit and GitHub push**
 
 Run:
 
@@ -196,3 +196,16 @@ gh repo create codex-mobile-flutter-mvp --private --source . --remote origin --p
 ```
 
 Expected: private GitHub repository exists and branch is pushed.
+
+---
+
+## 2026-05-31 Progress Record
+
+- Bridge, Flutter mobile client, Codex protocol assets, docs, and verification script are implemented on `feature/codex-mobile-mvp`.
+- Full verification passed with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1`: 21 Bridge service tests, backend HTTP smoke, Flutter analyze, and 16 Flutter widget/model tests.
+- Release packaging is oriented around the real deployment shape: Windows Bridge folder plus Android APK. Current artifacts:
+  - `dist\bridge-framework-dependent\start-bridge.ps1`
+  - `dist\bridge-framework-dependent\CodexMobile.Bridge.dll`
+  - `dist\bridge-framework-dependent\CodexMobile.Bridge.exe`
+  - `dist\mobile-android\app-release.apk`
+- Windows desktop Flutter build remains optional; the phone app plus Windows Bridge server is the primary deliverable.
