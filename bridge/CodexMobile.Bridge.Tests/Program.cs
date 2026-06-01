@@ -21,6 +21,8 @@ var cases = new (string Name, Action Test)[]
     ("codex app-server gateway only allows mobile-safe methods", tests.CodexGatewayRejectsUnsafeMethods),
     ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
     ("codex app-server gateway reports unavailable status safely", tests.CodexGatewayReportsUnavailableStatusSafely),
+    ("local codex history reads threads from jsonl sessions", tests.LocalCodexHistoryReadsThreadsFromJsonlSessions),
+    ("codex gateway falls back to local history", tests.CodexGatewayFallsBackToLocalHistory),
     ("device token store validates expiry and revocation", tests.DeviceTokenStoreValidatesExpiryAndRevocation),
     ("network interface service reports private mobile bridge URLs", tests.NetworkInterfaceServiceReportsPrivateMobileBridgeUrls),
     ("network interface service hides public hosts unless explicitly allowed", tests.NetworkInterfaceServiceHidesPublicHostsUnlessExplicitlyAllowed),
@@ -263,12 +265,13 @@ internal sealed class BridgeServiceTests
 
     public void CodexGatewayMapsCoreCalls()
     {
+        using var workspace = new TempWorkspace();
         var client = new FakeCodexAppServerClient();
         client.Enqueue("config/read", new Dictionary<string, object?> { ["model"] = "gpt-5.5" });
         client.Enqueue("account/read", new Dictionary<string, object?> { ["authMode"] = "chatgpt" });
         client.Enqueue("thread/list", new Dictionary<string, object?> { ["items"] = Array.Empty<object>() });
         client.Enqueue("thread/read", new Dictionary<string, object?> { ["thread"] = new Dictionary<string, object?>() });
-        var gateway = new CodexAppServerGateway(client);
+        var gateway = new CodexAppServerGateway(client, new LocalCodexHistoryService(workspace.CreateDirectory("empty-codex")));
 
         var config = gateway.ReadConfigAsync().GetAwaiter().GetResult();
         var account = gateway.ReadAccountAsync().GetAwaiter().GetResult();
@@ -296,6 +299,73 @@ internal sealed class BridgeServiceTests
         AssertFalse(status.Available, "status unavailable");
         AssertTrue(status.Message.Contains("[REDACTED]", StringComparison.Ordinal), "secret redacted");
         AssertFalse(status.Message.Contains("sk-secret", StringComparison.Ordinal), "secret removed");
+    }
+
+    public void LocalCodexHistoryReadsThreadsFromJsonlSessions()
+    {
+        using var workspace = new TempWorkspace();
+        var codexHome = workspace.CreateDirectory(".codex");
+        var sessionsDir = Path.Combine(codexHome, "sessions", "2026", "05", "31");
+        Directory.CreateDirectory(sessionsDir);
+
+        var threadId = "019e9999-test-thread";
+        var rolloutPath = Path.Combine(sessionsDir, $"rollout-2026-05-31T10-00-00-{threadId}.jsonl");
+        var indexLine = $"{{\"id\":\"{threadId}\",\"thread_name\":\"实现调研目标并测试\",\"updated_at\":\"2026-05-31T10:00:00Z\"}}";
+        var metaLine = $"{{\"timestamp\":\"2026-05-31T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{threadId}\",\"timestamp\":\"2026-05-31T10:00:00Z\",\"cwd\":\"C:\\\\Users\\\\doob\\\\Desktop\\\\code\\\\dev\\\\codex_mobile_app\",\"originator\":\"Codex Desktop\",\"cli_version\":\"0.131.0-alpha.9\",\"source\":\"vscode\",\"thread_source\":\"user\",\"model_provider\":\"newapi\"}}}}";
+        File.WriteAllText(
+            Path.Combine(codexHome, "session_index.jsonl"),
+            indexLine,
+            Encoding.UTF8);
+        File.WriteAllText(
+            rolloutPath,
+            string.Join(Environment.NewLine, new[]
+            {
+                metaLine,
+                "{\"timestamp\":\"2026-05-31T10:01:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"手机端和 Windows 端同步\"}}",
+                "{\"timestamp\":\"2026-05-31T10:02:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"已读取真实 Codex 线程\"}}",
+            }),
+            Encoding.UTF8);
+
+        var service = new LocalCodexHistoryService(codexHome);
+        var list = service.ListThreads();
+        var read = service.ReadThread(threadId);
+
+        AssertTrue(list.GetProperty("data").GetArrayLength() == 1, "one local thread listed");
+        AssertEqual(threadId, list.GetProperty("data")[0].GetProperty("id").GetString(), "thread id preserved");
+        AssertEqual("实现调研目标并测试", list.GetProperty("data")[0].GetProperty("name").GetString(), "thread name preserved");
+        AssertEqual("agentMessage", read.GetProperty("thread").GetProperty("turns")[0].GetProperty("items")[1].GetProperty("type").GetString(), "thread detail built");
+    }
+
+    public void CodexGatewayFallsBackToLocalHistory()
+    {
+        using var workspace = new TempWorkspace();
+        var codexHome = workspace.CreateDirectory(".codex");
+        var sessionsDir = Path.Combine(codexHome, "sessions", "2026", "05", "31");
+        Directory.CreateDirectory(sessionsDir);
+
+        var threadId = "019e8888-fallback";
+        var rolloutPath = Path.Combine(sessionsDir, $"rollout-2026-05-31T10-00-00-{threadId}.jsonl");
+        var indexLine = $"{{\"id\":\"{threadId}\",\"thread_name\":\"本地兜底线程\",\"updated_at\":\"2026-05-31T10:00:00Z\"}}";
+        var metaLine = $"{{\"timestamp\":\"2026-05-31T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{threadId}\",\"timestamp\":\"2026-05-31T10:00:00Z\",\"cwd\":\"C:\\\\Users\\\\doob\\\\Desktop\\\\code\\\\dev\\\\codex_mobile_app\",\"originator\":\"Codex Desktop\",\"cli_version\":\"0.131.0-alpha.9\",\"source\":\"vscode\",\"thread_source\":\"user\",\"model_provider\":\"newapi\"}}}}";
+        File.WriteAllText(
+            Path.Combine(codexHome, "session_index.jsonl"),
+            indexLine,
+            Encoding.UTF8);
+        File.WriteAllText(
+            rolloutPath,
+            metaLine,
+            Encoding.UTF8);
+
+        var client = new FakeCodexAppServerClient { Failure = new InvalidOperationException("app-server down") };
+        var gateway = new CodexAppServerGateway(client, new LocalCodexHistoryService(codexHome));
+
+        var list = gateway.ListThreadsAsync().GetAwaiter().GetResult();
+        var read = gateway.ReadThreadAsync(threadId).GetAwaiter().GetResult();
+
+        AssertEqual("thread/list", list.Method, "list method preserved");
+        AssertEqual("local-codex-history", list.Json.GetProperty("source").GetString(), "local history source");
+        AssertEqual(threadId, list.Json.GetProperty("data")[0].GetProperty("id").GetString(), "fallback thread id");
+        AssertEqual(threadId, read.Json.GetProperty("thread").GetProperty("id").GetString(), "fallback read thread id");
     }
 
     public void DeviceTokenStoreValidatesExpiryAndRevocation()

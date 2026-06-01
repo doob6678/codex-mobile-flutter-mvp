@@ -46,10 +46,12 @@ public sealed class CodexAppServerGateway
     private static readonly Regex SecretToken = new(@"sk-[A-Za-z0-9_\-]+", RegexOptions.Compiled);
 
     private readonly ICodexAppServerClient client;
+    private readonly LocalCodexHistoryService localHistory;
 
-    public CodexAppServerGateway(ICodexAppServerClient client)
+    public CodexAppServerGateway(ICodexAppServerClient client, LocalCodexHistoryService? localHistory = null)
     {
         this.client = client;
+        this.localHistory = localHistory ?? new LocalCodexHistoryService();
     }
 
     public IReadOnlyCollection<string> AllowedMethodNames => AllowedMethods;
@@ -79,18 +81,33 @@ public sealed class CodexAppServerGateway
 
     public Task<CodexAppServerJsonResponse> ListThreadsAsync(CancellationToken cancellationToken = default)
     {
-        return CallAsync("thread/list", new Dictionary<string, object?>(), cancellationToken);
+        if (localHistory.IsAvailable)
+        {
+            return Task.FromResult(new CodexAppServerJsonResponse("thread/list", localHistory.ListThreads()));
+        }
+
+        return CallWithLocalFallbackAsync(
+            "thread/list",
+            new Dictionary<string, object?>(),
+            () => localHistory.ListThreads(),
+            cancellationToken);
     }
 
     public Task<CodexAppServerJsonResponse> ReadThreadAsync(string threadId, CancellationToken cancellationToken = default)
     {
-        return CallAsync(
+        if (localHistory.IsAvailable)
+        {
+            return Task.FromResult(new CodexAppServerJsonResponse("thread/read", localHistory.ReadThread(threadId)));
+        }
+
+        return CallWithLocalFallbackAsync(
             "thread/read",
             new Dictionary<string, object?>
             {
                 ["threadId"] = threadId,
                 ["includeTurns"] = true,
             },
+            () => localHistory.ReadThread(threadId),
             cancellationToken);
     }
 
@@ -126,6 +143,27 @@ public sealed class CodexAppServerGateway
 
         var json = await client.CallAsync(method, parameters, cancellationToken);
         return new CodexAppServerJsonResponse(method, json);
+    }
+
+    private async Task<CodexAppServerJsonResponse> CallWithLocalFallbackAsync(
+        string method,
+        object? parameters,
+        Func<JsonElement> fallback,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await CallAsync(method, parameters, cancellationToken);
+        }
+        catch
+        {
+            if (localHistory.IsAvailable)
+            {
+                return new CodexAppServerJsonResponse(method, fallback());
+            }
+
+            throw;
+        }
     }
 
     private static string Redact(string message)

@@ -37,6 +37,7 @@ builder.Services.AddSingleton<CommandService>();
 builder.Services.AddSingleton<ConversationService>();
 builder.Services.AddSingleton<NetworkInterfaceService>();
 builder.Services.AddSingleton<SyncStateService>();
+builder.Services.AddSingleton<LocalCodexHistoryService>();
 builder.Services.AddSingleton<ICodexAppServerClient, StdioCodexAppServerClient>();
 builder.Services.AddSingleton<CodexAppServerGateway>();
 builder.Services.AddSingleton(sp =>
