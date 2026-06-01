@@ -42,6 +42,11 @@ abstract interface class CodexMobileApi {
 
   Future<CodexThreadDetail> readCodexThread({required String threadId});
 
+  Future<void> startCodexTurn({
+    required String threadId,
+    required String prompt,
+  });
+
   Future<List<ApprovalRequest>> listApprovals();
 
   Future<BridgeNetworkSummary> getNetworkSummary();
@@ -208,6 +213,17 @@ class HttpCodexMobileApi implements CodexMobileApi {
   Future<CodexThreadDetail> readCodexThread({required String threadId}) async {
     final json = await _getJson('/codex/threads/$threadId');
     return CodexThreadDetail.fromJson(json);
+  }
+
+  @override
+  Future<void> startCodexTurn({
+    required String threadId,
+    required String prompt,
+  }) async {
+    await _postObject('/codex/turns', {
+      'threadId': threadId,
+      'prompt': prompt,
+    });
   }
 
   @override

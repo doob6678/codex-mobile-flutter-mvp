@@ -157,6 +157,34 @@ void main() {
     expect(find.text('已读取真实 Codex 线程'), findsOneWidget);
   });
 
+  testWidgets('thread detail can send a mobile prompt to Windows Codex', (
+    tester,
+  ) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(CodexMobileApp(api: api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('对话').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('实现调研目标并测试'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('codex-turn-prompt-field')),
+      '从手机继续执行目标并汇报进度',
+    );
+    await tester.tap(find.byTooltip('发送到 Windows Codex'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastTurnThreadId, 'thread-3');
+    expect(api.lastTurnPrompt, '从手机继续执行目标并汇报进度');
+    expect(find.text('已发送到 Windows Codex'), findsOneWidget);
+  });
+
   testWidgets('conversations stay usable with many threads on a narrow phone', (
     tester,
   ) async {
@@ -245,6 +273,8 @@ class _FakeApi implements CodexMobileApi {
   String bridgeUrl = '';
   String? completedBridgeUrl;
   String? completedPairingCode;
+  String? lastTurnThreadId;
+  String? lastTurnPrompt;
 
   @override
   Future<BridgeStatus> getStatus() async => const BridgeStatus(
@@ -397,6 +427,15 @@ class _FakeApi implements CodexMobileApi {
           CodexThreadMessage(role: 'assistant', text: '已读取真实 Codex 线程'),
         ],
       );
+
+  @override
+  Future<void> startCodexTurn({
+    required String threadId,
+    required String prompt,
+  }) async {
+    lastTurnThreadId = threadId;
+    lastTurnPrompt = prompt;
+  }
 
   @override
   Future<List<ApprovalRequest>> listApprovals() async => const [

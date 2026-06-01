@@ -141,18 +141,24 @@ class _CodexThreadGroups extends StatelessWidget {
   void _showThreadDetails(BuildContext context, CodexThreadSummary thread) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => FutureBuilder<CodexThreadDetail>(
         future: api.readCodexThread(threadId: thread.id),
         builder: (context, snapshot) {
           final detail = snapshot.data;
           return Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              MediaQuery.viewInsetsOf(context).bottom + 20,
+            ),
             child: SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.72,
+              height: MediaQuery.sizeOf(context).height * 0.84,
               child: detail == null
                   ? const LoadingView()
-                  : _ThreadDetailView(detail: detail),
+                  : _ThreadDetailView(api: api, detail: detail),
             ),
           );
         },
@@ -161,27 +167,47 @@ class _CodexThreadGroups extends StatelessWidget {
   }
 }
 
-class _ThreadDetailView extends StatelessWidget {
-  const _ThreadDetailView({required this.detail});
+class _ThreadDetailView extends StatefulWidget {
+  const _ThreadDetailView({required this.api, required this.detail});
 
+  final CodexMobileApi api;
   final CodexThreadDetail detail;
+
+  @override
+  State<_ThreadDetailView> createState() => _ThreadDetailViewState();
+}
+
+class _ThreadDetailViewState extends State<_ThreadDetailView> {
+  final TextEditingController _promptController = TextEditingController();
+  bool _sending = false;
+  String? _statusMessage;
+  String? _error;
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(detail.thread.title, style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          widget.detail.thread.title,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 8),
-        SelectableText(detail.thread.projectPath),
+        SelectableText(widget.detail.thread.projectPath),
         const SizedBox(height: 12),
         Expanded(
           child: ListView(
             children: [
-              if (detail.messages.isEmpty)
-                SelectableText(detail.thread.preview)
+              if (widget.detail.messages.isEmpty)
+                SelectableText(widget.detail.thread.preview)
               else
-                for (final message in detail.messages)
+                for (final message in widget.detail.messages)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
                     child: Column(
@@ -199,8 +225,85 @@ class _ThreadDetailView extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('codex-turn-prompt-field'),
+          controller: _promptController,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: '继续对话',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Tooltip(
+              message: '发送到 Windows Codex',
+              child: FilledButton.icon(
+                onPressed: _sending ? null : _sendTurn,
+                icon: const Icon(Icons.send),
+                label: const Text('发送到 Windows Codex'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (_sending) const CircularProgressIndicator(),
+          ],
+        ),
+        if (_statusMessage != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _statusMessage!,
+            style: const TextStyle(color: Color(0xFF166534)),
+          ),
+        ],
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _error!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _sendTurn() async {
+    final prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      setState(() => _error = '请输入要发送给 Windows Codex 的内容。');
+      return;
+    }
+
+    setState(() {
+      _sending = true;
+      _error = null;
+      _statusMessage = null;
+    });
+
+    try {
+      await widget.api.startCodexTurn(
+        threadId: widget.detail.thread.id,
+        prompt: prompt,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sending = false;
+        _statusMessage = '已发送到 Windows Codex';
+        _promptController.clear();
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sending = false;
+        _error = error.toString();
+      });
+    }
   }
 }
 
