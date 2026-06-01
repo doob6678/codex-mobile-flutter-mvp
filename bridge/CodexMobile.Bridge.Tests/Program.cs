@@ -21,6 +21,9 @@ var cases = new (string Name, Action Test)[]
     ("codex app-server gateway only allows mobile-safe methods", tests.CodexGatewayRejectsUnsafeMethods),
     ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
     ("codex app-server gateway reports unavailable status safely", tests.CodexGatewayReportsUnavailableStatusSafely),
+    ("connect page prefers reachable non-loopback bridge URL", tests.ConnectPagePrefersReachableNonLoopbackBridgeUrl),
+    ("connection page creates QR pairing payload", tests.ConnectionPageCreatesQrPairingPayload),
+    ("connect page is public", tests.ConnectPageIsPublic),
     ("local codex history reads threads from jsonl sessions", tests.LocalCodexHistoryReadsThreadsFromJsonlSessions),
     ("codex gateway falls back to local history", tests.CodexGatewayFallsBackToLocalHistory),
     ("device token store validates expiry and revocation", tests.DeviceTokenStoreValidatesExpiryAndRevocation),
@@ -299,6 +302,56 @@ internal sealed class BridgeServiceTests
         AssertFalse(status.Available, "status unavailable");
         AssertTrue(status.Message.Contains("[REDACTED]", StringComparison.Ordinal), "secret redacted");
         AssertFalse(status.Message.Contains("sk-secret", StringComparison.Ordinal), "secret removed");
+    }
+
+    public void ConnectPagePrefersReachableNonLoopbackBridgeUrl()
+    {
+        var summary = new NetworkInterfaceService(
+            () =>
+            [
+                IPAddress.Parse("127.0.0.1"),
+                IPAddress.Parse("192.168.31.25"),
+                IPAddress.Parse("100.72.10.9"),
+            ],
+            allowPublicBridgeHosts: false).ReadSummary("http", 5010);
+
+        var preferred = ConnectPageService.SelectPreferredEndpoint(summary);
+
+        AssertEqual("http://192.168.31.25:5010", preferred.Url, "LAN URL should beat loopback");
+        AssertEqual("private-lan", preferred.Scope, "preferred scope");
+    }
+
+    public void ConnectionPageCreatesQrPairingPayload()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 1, 10, 0, 0, TimeSpan.Zero));
+        var tokenStore = new DeviceTokenStore(clock);
+        var pairing = new PairingService(clock, tokenStore);
+        var network = new NetworkInterfaceService(
+            () => [IPAddress.Parse("127.0.0.1"), IPAddress.Parse("10.8.0.4")],
+            allowPublicBridgeHosts: false);
+        var pageService = new ConnectPageService(pairing, network);
+
+        var page = pageService.Create("http", 51870, TimeSpan.FromMinutes(5));
+        using var payload = JsonDocument.Parse(page.PayloadJson);
+        var root = payload.RootElement;
+
+        AssertEqual("codex-mobile-bridge", root.GetProperty("type").GetString(), "payload type");
+        AssertEqual(1, root.GetProperty("version").GetInt32(), "payload version");
+        AssertEqual("http://10.8.0.4:51870", root.GetProperty("bridgeUrl").GetString(), "payload bridge URL");
+        AssertEqual(page.PairingCode, root.GetProperty("pairingCode").GetString(), "payload pairing code");
+        AssertEqual(page.ExpiresAt, root.GetProperty("expiresAt").GetDateTimeOffset(), "payload expiry");
+        AssertTrue(page.PairingCode.Length == 6, "pairing code length");
+        AssertTrue(page.QrSvg.StartsWith("<svg", StringComparison.Ordinal), "QR is local SVG");
+        AssertTrue(page.Html.Contains("连接 Codex Mobile Bridge", StringComparison.Ordinal), "Chinese title rendered");
+        AssertTrue(page.Html.Contains("background:#fff", StringComparison.Ordinal), "white background rendered");
+        AssertTrue(page.Html.Contains("http://127.0.0.1:51870", StringComparison.Ordinal), "alternative URL rendered");
+    }
+
+    public void ConnectPageIsPublic()
+    {
+        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect")), "/connect should be public");
+        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect/")), "/connect slash should be public");
+        AssertFalse(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/projects")), "projects should stay protected");
     }
 
     public void LocalCodexHistoryReadsThreadsFromJsonlSessions()

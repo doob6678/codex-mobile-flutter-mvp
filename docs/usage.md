@@ -10,12 +10,14 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-bridge.ps1
 ```
 
-发布包里启动：
+发布包里推荐直接启动 Windows exe：
 
 ```powershell
-cd C:\Users\doob\Desktop\code\dev\codex_mobile_app\dist\bridge-framework-dependent
+cd C:\Users\doob\Desktop\code\dev\codex_mobile_app\dist\bridge-windows
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start-bridge.ps1
 ```
+
+`dist\bridge-windows\CodexMobile.Bridge.exe` 是自包含发布，不要求目标机器预装 .NET SDK。
 
 默认监听：
 
@@ -42,6 +44,14 @@ Invoke-RestMethod -Uri http://127.0.0.1:5010/network/interfaces
 
 手机和 Windows 在同一个 Wi-Fi 下，用 `192.168.x.x` 这一类地址。跨网络时用 Tailscale、ZeroTier、WireGuard 等组网后的 `100.x.x.x` 或对应 VPN 地址。
 
+Bridge 还提供一个扫码连接页：
+
+```text
+http://127.0.0.1:5010/connect
+```
+
+在 Windows 浏览器打开这个地址，页面会自动生成新的配对码、推荐真实 Bridge 地址，并显示二维码。手机端扫描这个二维码后会自动填入地址和配对码。
+
 ## 3. 安装 Android APK
 
 APK 路径：
@@ -54,18 +64,25 @@ C:\Users\doob\Desktop\code\dev\codex_mobile_app\dist\mobile-android\app-release.
 
 ## 4. 配对
 
-在手机“配对”页：
+在手机“配对”页，推荐流程：
+
+1. Windows 打开 `http://127.0.0.1:5010/connect`。
+2. 手机点“扫描 Bridge QR”。
+3. 扫描 Windows 页面上的二维码。
+4. App 自动完成配对并保存当前会话的 Bridge 访问令牌。
+
+手动流程也保留：
 
 1. 在“Bridge 地址”里填 Windows 的真实地址，例如 `http://192.168.31.25:5010`。
 2. 点“开始配对”。
 3. 应用会显示配对码。
-4. 点“完成配对”后，手机会保存当前会话的 Bridge 访问令牌。
+4. 点“完成配对”。
 
 配对后再打开“项目”“文件”“对话”“审批”“目标”“设置”等页面。
 
 ## 5. 侧边栏
 
-左侧默认是收起状态，只显示图标。点击左上角菜单按钮可以展开中文侧边栏，再点任意入口会自动收回。
+手机默认没有常驻左侧栏，不会占窄屏宽度。每个页面顶部左侧固定一个菜单图标，点击后打开中文目录抽屉，再点任意入口会自动收回。
 
 主要入口：
 

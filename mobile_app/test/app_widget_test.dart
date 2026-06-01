@@ -12,15 +12,16 @@ import 'package:mobile_app/src/models/sync_state.dart';
 import 'package:mobile_app/src/screens/file_preview_screen.dart';
 
 void main() {
-  testWidgets('navigation is collapsed by default and opens on tap', (tester) async {
+  testWidgets('top menu button opens labeled drawer navigation', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('打开侧边栏'), findsOneWidget);
+    expect(find.byTooltip('打开菜单'), findsOneWidget);
+    expect(find.byTooltip('打开侧边栏'), findsNothing);
     expect(find.text('概览'), findsNothing);
     expect(find.text('项目'), findsNothing);
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     expect(find.text('配对'), findsWidgets);
@@ -49,11 +50,36 @@ void main() {
     expect(find.textContaining('配对码 123456'), findsOneWidget);
   });
 
+  testWidgets('QR payload fallback auto-fills and completes pairing', (
+    tester,
+  ) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(CodexMobileApp(api: api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('扫描 Bridge QR'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('bridge-qr-payload-field')),
+      '{"type":"codex-mobile-bridge","version":"1","bridgeUrl":"http://192.168.31.25:5010","pairingCode":"654321","expiresAt":"2026-06-01T12:00:00Z"}',
+    );
+    await tester.tap(find.text('使用 QR 内容'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已配对 test device'), findsOneWidget);
+    expect(find.text('http://192.168.31.25:5010'), findsOneWidget);
+    expect(find.text('654321'), findsOneWidget);
+    expect(api.bridgeUrl, 'http://192.168.31.25:5010');
+    expect(api.completedBridgeUrl, 'http://192.168.31.25:5010');
+    expect(api.completedPairingCode, '654321');
+  });
+
   testWidgets('navigation exposes all MVP surfaces', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     expect(find.text('配对'), findsWidgets);
@@ -70,7 +96,7 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('项目').last);
@@ -78,7 +104,7 @@ void main() {
     expect(find.text('codex_mobile_app'), findsOneWidget);
     expect(find.text(r'C:\work\codex_mobile_app'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('文件').last);
@@ -95,7 +121,7 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('审批').last);
@@ -112,7 +138,7 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('对话').last);
@@ -131,11 +157,34 @@ void main() {
     expect(find.text('已读取真实 Codex 线程'), findsOneWidget);
   });
 
+  testWidgets('conversations stay usable with many threads on a narrow phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('对话').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('实现手机小说 Agent'), findsOneWidget);
+    expect(find.text('整理 Java Harness 文档'), findsOneWidget);
+    expect(find.text('排查超长路径和多线程同步问题'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('settings includes release bridge safety text', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('设置').last);
@@ -160,7 +209,7 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('目标').last);
@@ -194,6 +243,8 @@ void main() {
 
 class _FakeApi implements CodexMobileApi {
   String bridgeUrl = '';
+  String? completedBridgeUrl;
+  String? completedPairingCode;
 
   @override
   Future<BridgeStatus> getStatus() async => const BridgeStatus(
@@ -206,8 +257,12 @@ class _FakeApi implements CodexMobileApi {
   Future<PairingResult> completePairing({
     required String bridgeUrl,
     required String pairingCode,
-  }) async =>
-      const PairingResult(token: 'token', pairedDeviceName: 'test device');
+  }) async {
+    completedBridgeUrl = bridgeUrl;
+    completedPairingCode = pairingCode;
+    setBridgeUrl(bridgeUrl);
+    return const PairingResult(token: 'token', pairedDeviceName: 'test device');
+  }
 
   @override
   Future<List<ProjectSummary>> listProjects() async => const [
@@ -295,6 +350,16 @@ class _FakeApi implements CodexMobileApi {
               r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
           status: 'completed',
           updatedAt: DateTime.utc(2026, 5, 30, 12),
+        ),
+        CodexThreadSummary(
+          id: 'thread-4',
+          title: '排查超长路径和多线程同步问题',
+          preview: '窄屏也要能快速区分多个会话',
+          projectName: '调研Java_Harness',
+          projectPath:
+              r'C:\Users\doob\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+          status: 'idle',
+          updatedAt: DateTime.utc(2026, 5, 30, 9),
         ),
       ],
     ),

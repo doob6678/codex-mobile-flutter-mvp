@@ -21,7 +21,19 @@ class ScreenFrame extends StatelessWidget {
         SliverAppBar(
           toolbarHeight: 72,
           title: Text(title),
-          leading: Icon(icon),
+          leading: Builder(
+            builder: (context) {
+              final scaffold = Scaffold.maybeOf(context);
+              if (scaffold?.hasDrawer ?? false) {
+                return IconButton(
+                  tooltip: '打开菜单',
+                  onPressed: scaffold!.openDrawer,
+                  icon: const Icon(Icons.menu),
+                );
+              }
+              return Icon(icon);
+            },
+          ),
           actions: actions,
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.white,

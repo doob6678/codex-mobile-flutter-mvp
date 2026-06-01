@@ -21,7 +21,6 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
-  bool _navigationOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -39,36 +38,15 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Row(
-          children: [
-            Container(
-              width: _navigationOpen ? 184 : 64,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  right: BorderSide(color: Color(0xFFE5E7EB)),
-                ),
-              ),
-              child: _Sidebar(
-                open: _navigationOpen,
-                selectedIndex: _selectedIndex,
-                destinations: destinations,
-                onToggle: () => setState(() {
-                  _navigationOpen = !_navigationOpen;
-                }),
-                onSelected: (index) {
-                  _select(index);
-                  setState(() {
-                    _navigationOpen = false;
-                  });
-                },
-              ),
-            ),
-            Expanded(child: screens[_selectedIndex]),
-          ],
-        ),
+      drawer: _AppDrawer(
+        selectedIndex: _selectedIndex,
+        destinations: destinations,
+        onSelected: (index) {
+          Navigator.of(context).pop();
+          _select(index);
+        },
       ),
+      body: SafeArea(child: screens[_selectedIndex]),
     );
   }
 
@@ -136,103 +114,84 @@ class _Destination {
   final String label;
 }
 
-class _Sidebar extends StatelessWidget {
-  const _Sidebar({
-    required this.open,
+class _AppDrawer extends StatelessWidget {
+  const _AppDrawer({
     required this.selectedIndex,
     required this.destinations,
-    required this.onToggle,
     required this.onSelected,
   });
 
-  final bool open;
   final int selectedIndex;
   final List<_Destination> destinations;
-  final VoidCallback onToggle;
   final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        IconButton(
-          tooltip: open ? '收起侧边栏' : '打开侧边栏',
-          onPressed: onToggle,
-          icon: Icon(open ? Icons.menu_open : Icons.menu),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: destinations.length,
-            itemBuilder: (context, index) {
-              final destination = destinations[index];
-              final selected = selectedIndex == index;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Material(
-                  color: selected ? const Color(0xFFF3F4F6) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => onSelected(index),
-                    child: SizedBox(
-                      height: 48,
-                      child: open
-                          ? Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: Row(
-                                children: [
-                                  IconTheme(
-                                    data: IconThemeData(
-                                      color: selected
-                                          ? const Color(0xFF111827)
-                                          : const Color(0xFF6B7280),
-                                    ),
-                                    child: selected
-                                        ? destination.selectedIcon
-                                        : destination.icon,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      destination.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: selected
-                                            ? const Color(0xFF111827)
-                                            : const Color(0xFF4B5563),
-                                        fontWeight: selected
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Center(
-                              child: IconTheme(
-                                data: IconThemeData(
-                                  color: selected
-                                      ? const Color(0xFF111827)
-                                      : const Color(0xFF6B7280),
-                                ),
-                                child: selected
-                                    ? destination.selectedIcon
-                                    : destination.icon,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              );
-            },
+    final width = MediaQuery.sizeOf(context).width;
+    return Drawer(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      width: width < 360 ? width - 24 : 300,
+      child: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: ListTile(
+              leading: const Icon(Icons.phone_iphone),
+              title: const Text('Codex Mobile'),
+              subtitle: const Text('Windows Bridge 同步'),
+              trailing: IconButton(
+                tooltip: '关闭菜单',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close),
+              ),
+            ),
           ),
-        ),
-      ],
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(10),
+              itemCount: destinations.length,
+              itemBuilder: (context, index) {
+                final destination = destinations[index];
+                final selected = selectedIndex == index;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: ListTile(
+                    selected: selected,
+                    selectedTileColor: const Color(0xFFF3F4F6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    leading: IconTheme(
+                      data: IconThemeData(
+                        color: selected
+                            ? const Color(0xFF111827)
+                            : const Color(0xFF6B7280),
+                      ),
+                      child:
+                          selected ? destination.selectedIcon : destination.icon,
+                    ),
+                    title: Text(
+                      destination.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFF111827)
+                            : const Color(0xFF4B5563),
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                    onTap: () => onSelected(index),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

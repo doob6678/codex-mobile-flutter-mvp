@@ -36,6 +36,7 @@ builder.Services.AddSingleton<AuditLog>();
 builder.Services.AddSingleton<CommandService>();
 builder.Services.AddSingleton<ConversationService>();
 builder.Services.AddSingleton<NetworkInterfaceService>();
+builder.Services.AddSingleton<ConnectPageService>();
 builder.Services.AddSingleton<SyncStateService>();
 builder.Services.AddSingleton<LocalCodexHistoryService>();
 builder.Services.AddSingleton<ICodexAppServerClient, StdioCodexAppServerClient>();
@@ -89,6 +90,13 @@ app.MapGet("/network/interfaces", (HttpContext context, NetworkInterfaceService 
     var port = context.Request.Host.Port
         ?? (string.Equals(context.Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80);
     return Results.Ok(network.ReadSummary(context.Request.Scheme, port));
+});
+app.MapGet("/connect", (HttpContext context, ConnectPageService connectPage) =>
+{
+    var port = context.Request.Host.Port
+        ?? (string.Equals(context.Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80);
+    var page = connectPage.Create(context.Request.Scheme, port, TimeSpan.FromMinutes(5));
+    return Results.Content(page.Html, "text/html; charset=utf-8");
 });
 app.MapGet("/sync/state", (SyncStateService sync) => Results.Ok(sync.GetSnapshot()));
 app.MapGet("/sync/stream", async (HttpContext context, SyncStateService sync) =>
@@ -179,6 +187,7 @@ public static class BridgeEndpointPolicy
     public static bool IsPublicEndpoint(PathString path)
     {
         return path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/connect", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/pairing", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/protocol", StringComparison.OrdinalIgnoreCase);
     }

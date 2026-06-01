@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repo = (Get-Location).Path
+$bridgeExe = Join-Path $repo "dist\bridge-windows"
 $bridge = Join-Path $repo "dist\bridge-framework-dependent"
 $outLog = Join-Path $repo "tmp-bridge-smoke.out.log"
 $errLog = Join-Path $repo "tmp-bridge-smoke.err.log"
@@ -13,8 +14,18 @@ $errLog = Join-Path $repo "tmp-bridge-smoke.err.log"
 Remove-Item -LiteralPath $outLog -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $errLog -ErrorAction SilentlyContinue
 
-if (-not (Test-Path -LiteralPath (Join-Path $bridge "CodexMobile.Bridge.dll"))) {
-    throw "Packaged bridge DLL not found under $bridge"
+if (Test-Path -LiteralPath (Join-Path $bridgeExe "CodexMobile.Bridge.exe")) {
+    $bridgeRoot = $bridgeExe
+    $bridgeFilePath = Join-Path $bridgeRoot "CodexMobile.Bridge.exe"
+    $bridgeArguments = @()
+}
+elseif (Test-Path -LiteralPath (Join-Path $bridge "CodexMobile.Bridge.dll")) {
+    $bridgeRoot = $bridge
+    $bridgeFilePath = "dotnet"
+    $bridgeArguments = @(".\CodexMobile.Bridge.dll")
+}
+else {
+    throw "Packaged bridge executable or DLL not found."
 }
 
 $env:ASPNETCORE_URLS = "http://127.0.0.1:$Port"
@@ -33,14 +44,20 @@ if (Test-Path -LiteralPath $KnowledgeBasePath) {
     $env:CODEX_MOBILE_DEFAULT_PROJECTS = "AgentScope Java Harness Knowledge Base=$KnowledgeBasePath"
 }
 
-$process = Start-Process `
-    -FilePath "dotnet" `
-    -ArgumentList ".\CodexMobile.Bridge.dll" `
-    -WorkingDirectory $bridge `
-    -PassThru `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $outLog `
-    -RedirectStandardError $errLog
+$startArgs = @{
+    FilePath = $bridgeFilePath
+    WorkingDirectory = $bridgeRoot
+    PassThru = $true
+    WindowStyle = 'Hidden'
+    RedirectStandardOutput = $outLog
+    RedirectStandardError = $errLog
+}
+
+if ($bridgeArguments.Count -gt 0) {
+    $startArgs.ArgumentList = $bridgeArguments
+}
+
+$process = Start-Process @startArgs
 
 try {
     $baseUri = "http://127.0.0.1:$Port"

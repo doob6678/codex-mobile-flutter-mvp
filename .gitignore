@@ -18,6 +18,7 @@ TestResults/
 .env.*
 !.env.example
 .dotnet_home/
+.dotnet-home/
 .nuget_packages/
 bridge/data/
 bridge/logs/
