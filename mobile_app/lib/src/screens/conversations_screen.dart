@@ -16,7 +16,7 @@ class ConversationsScreen extends StatelessWidget {
       future: _loadHistory(),
       builder: (context, snapshot) {
         return ScreenFrame(
-          title: 'Conversations',
+          title: '对话',
           icon: Icons.chat_bubble,
           child: _HistoryList(api: api, history: snapshot.data),
         );
@@ -218,7 +218,7 @@ class _ConversationList extends StatelessWidget {
     if (conversations.isEmpty) {
       return const SizedBox(
         height: 240,
-        child: EmptyView(message: 'No Codex thread history from the bridge yet.'),
+        child: EmptyView(message: 'Bridge 里还没有可显示的 Codex 对话历史。'),
       );
     }
     return Column(
@@ -226,8 +226,8 @@ class _ConversationList extends StatelessWidget {
         if (codexUnavailable)
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Codex app-server history unavailable'),
-            subtitle: Text('Showing Bridge-local conversations instead.'),
+            title: Text('Codex app-server 历史不可用'),
+            subtitle: Text('当前显示 Bridge 本地会话。'),
           ),
         for (final conversation in conversations)
           Card(

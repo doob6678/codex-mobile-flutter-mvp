@@ -28,7 +28,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         _selectedProjectId ??= projects.isNotEmpty ? projects.first.id : null;
 
         return ScreenFrame(
-          title: 'Files',
+          title: '文件',
           icon: Icons.description,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,7 +52,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               if (_selectedProjectId == null)
                 const SizedBox(
                   height: 240,
-                  child: EmptyView(message: 'No project selected.'),
+                  child: EmptyView(message: '请选择一个项目。'),
                 )
               else
                 FutureBuilder<List<CodexFile>>(
@@ -68,7 +68,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                     if (files.isEmpty) {
                       return const SizedBox(
                         height: 240,
-                        child: EmptyView(message: 'Folder is empty.'),
+                        child: EmptyView(message: '当前目录为空。'),
                       );
                     }
                     return Column(
@@ -84,7 +84,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                               title: Text(file.name),
                               subtitle: Text(
                                 file.isDirectory
-                                    ? 'Folder'
+                                    ? '文件夹'
                                     : '${file.sizeBytes} bytes · ${file.path}',
                               ),
                               onTap: file.isDirectory

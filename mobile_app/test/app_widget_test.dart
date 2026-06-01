@@ -12,30 +12,76 @@ import 'package:mobile_app/src/models/sync_state.dart';
 import 'package:mobile_app/src/screens/file_preview_screen.dart';
 
 void main() {
+  testWidgets('navigation is collapsed by default and opens on tap', (tester) async {
+    await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('打开侧边栏'), findsOneWidget);
+    expect(find.text('概览'), findsNothing);
+    expect(find.text('项目'), findsNothing);
+
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('配对'), findsWidgets);
+    expect(find.text('概览'), findsWidgets);
+    expect(find.text('项目'), findsWidgets);
+    expect(find.text('文件'), findsWidgets);
+    expect(find.text('对话'), findsWidgets);
+    expect(find.text('审批'), findsWidgets);
+    expect(find.text('目标'), findsWidgets);
+    expect(find.text('设置'), findsWidgets);
+  });
+
+  testWidgets('pairing uses a real bridge URL typed by the user', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(CodexMobileApp(api: api));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('bridge-url-field')),
+      'http://192.168.31.25:5010',
+    );
+    await tester.tap(find.text('开始配对'));
+    await tester.pumpAndSettle();
+
+    expect(api.bridgeUrl, 'http://192.168.31.25:5010');
+    expect(find.textContaining('配对码 123456'), findsOneWidget);
+  });
+
   testWidgets('navigation exposes all MVP surfaces', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Pairing'), findsWidgets);
-    expect(find.text('Dashboard'), findsWidgets);
-    expect(find.text('Projects'), findsWidgets);
-    expect(find.text('Files'), findsWidgets);
-    expect(find.text('Conversations'), findsWidgets);
-    expect(find.text('Approvals'), findsWidgets);
-    expect(find.text('Goals'), findsWidgets);
-    expect(find.text('Settings'), findsWidgets);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('配对'), findsWidgets);
+    expect(find.text('概览'), findsWidgets);
+    expect(find.text('项目'), findsWidgets);
+    expect(find.text('文件'), findsWidgets);
+    expect(find.text('对话'), findsWidgets);
+    expect(find.text('审批'), findsWidgets);
+    expect(find.text('目标'), findsWidgets);
+    expect(find.text('设置'), findsWidgets);
   });
 
   testWidgets('project and file lists render bridge data', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Projects').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('项目').last);
     await tester.pumpAndSettle();
     expect(find.text('codex_mobile_app'), findsOneWidget);
     expect(find.text(r'C:\work\codex_mobile_app'), findsOneWidget);
 
-    await tester.tap(find.text('Files').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('文件').last);
     await tester.pumpAndSettle();
     expect(find.text('lib'), findsOneWidget);
     expect(find.text('main.dart'), findsOneWidget);
@@ -49,12 +95,15 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Approvals').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('审批').last);
     await tester.pumpAndSettle();
 
     expect(find.text('Run Flutter tests'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Reject'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '批准'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '拒绝'), findsOneWidget);
   });
 
   testWidgets('conversations screen renders real Codex thread history by project', (
@@ -63,7 +112,10 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Conversations').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('对话').last);
     await tester.pumpAndSettle();
 
     expect(find.text('调研Java_Harness'), findsOneWidget);
@@ -83,21 +135,24 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Settings').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('设置').last);
     await tester.pumpAndSettle();
 
     expect(
       find.textContaining(
-        'Release builds require HTTPS or trusted local bridge pairing',
+        '发布版应使用 HTTPS 或可信的本地 Bridge 配对',
       ),
       findsOneWidget,
     );
     expect(
-      find.textContaining('never expose the Windows Bridge'),
+      find.textContaining('不要把 Windows Bridge 暴露到不可信网络'),
       findsOneWidget,
     );
     expect(find.text('http://192.168.31.25:5010'), findsOneWidget);
-    expect(find.textContaining('pairing token required'), findsWidgets);
+    expect(find.textContaining('需要配对令牌'), findsWidgets);
     expect(find.textContaining('Skipped public host 8.8.8.8'), findsOneWidget);
   });
 
@@ -105,10 +160,13 @@ void main() {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Goals').last);
+    await tester.tap(find.byTooltip('打开侧边栏'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('/goal objective'), findsOneWidget);
+    await tester.tap(find.text('目标').last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('/goal 目标'), findsOneWidget);
     expect(find.text('实现手机端查看 Codex 任务进度和完成情况'), findsOneWidget);
     expect(find.text('Bridge sync'), findsOneWidget);
     expect(find.text('90%'), findsOneWidget);
@@ -135,6 +193,8 @@ void main() {
 }
 
 class _FakeApi implements CodexMobileApi {
+  String bridgeUrl = '';
+
   @override
   Future<BridgeStatus> getStatus() async => const BridgeStatus(
     connected: true,
@@ -293,6 +353,11 @@ class _FakeApi implements CodexMobileApi {
 
   @override
   void setAccessToken(String? token) {}
+
+  @override
+  void setBridgeUrl(String bridgeUrl) {
+    this.bridgeUrl = bridgeUrl;
+  }
 
   @override
   Future<PairingChallenge> startPairing() async => PairingChallenge(

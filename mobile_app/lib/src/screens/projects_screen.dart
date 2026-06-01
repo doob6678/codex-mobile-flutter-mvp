@@ -16,7 +16,7 @@ class ProjectsScreen extends StatelessWidget {
       builder: (context, snapshot) {
         final projects = snapshot.data;
         return ScreenFrame(
-          title: 'Projects',
+          title: '项目',
           icon: Icons.folder,
           child: _ProjectList(projects: projects),
         );
@@ -38,7 +38,7 @@ class _ProjectList extends StatelessWidget {
     if (projects!.isEmpty) {
       return const SizedBox(
         height: 240,
-        child: EmptyView(message: 'No trusted projects are available.'),
+        child: EmptyView(message: '还没有可访问的受信任项目。'),
       );
     }
     return Column(
@@ -52,8 +52,8 @@ class _ProjectList extends StatelessWidget {
               title: Text(project.name),
               subtitle: Text(project.rootPath),
               trailing: project.trusted
-                  ? const Text('Trusted')
-                  : const Text('Read-only'),
+                  ? const Text('已信任')
+                  : const Text('只读'),
             ),
           ),
       ],

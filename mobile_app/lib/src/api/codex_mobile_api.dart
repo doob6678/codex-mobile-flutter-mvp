@@ -13,6 +13,8 @@ import 'bridge_endpoint.dart';
 abstract interface class CodexMobileApi {
   Future<BridgeStatus> getStatus();
 
+  void setBridgeUrl(String bridgeUrl);
+
   void setAccessToken(String? token);
 
   Future<PairingChallenge> startPairing();
@@ -113,12 +115,18 @@ class PairingChallenge {
 }
 
 class HttpCodexMobileApi implements CodexMobileApi {
-  HttpCodexMobileApi(this.endpoint, {HttpClient? client})
-    : _client = client ?? HttpClient();
+  HttpCodexMobileApi(String bridgeUrl, {HttpClient? client})
+    : _endpoint = _createEndpoint(bridgeUrl),
+      _client = client ?? HttpClient();
 
-  final BridgeEndpoint endpoint;
+  BridgeEndpoint? _endpoint;
   final HttpClient _client;
   String? _accessToken;
+
+  @override
+  void setBridgeUrl(String bridgeUrl) {
+    _endpoint = _createEndpoint(bridgeUrl);
+  }
 
   @override
   void setAccessToken(String? token) {
@@ -142,6 +150,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     required String bridgeUrl,
     required String pairingCode,
   }) async {
+    setBridgeUrl(bridgeUrl);
     final json = await _postObject('/pairing/complete', {
       'code': pairingCode,
     });
@@ -221,7 +230,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
 
   @override
   Stream<CodexSyncSnapshot> watchSyncState() async* {
-    final request = await _client.getUrl(endpoint.uri('/sync/stream'));
+    final request = await _client.getUrl(_requireEndpoint().uri('/sync/stream'));
     _applyCommonHeaders(request);
     request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
     final response = await request.close();
@@ -299,7 +308,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     String path, [
     Map<String, String?> query = const {},
   ]) async {
-    final request = await _client.getUrl(endpoint.uri(path, query));
+    final request = await _client.getUrl(_requireEndpoint().uri(path, query));
     _applyCommonHeaders(request);
     return _sendJsonRequest(request);
   }
@@ -308,7 +317,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     String path,
     Map<String, Object?> body,
   ) async {
-    final request = await _client.postUrl(endpoint.uri(path));
+    final request = await _client.postUrl(_requireEndpoint().uri(path));
     _applyCommonHeaders(request);
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(body));
@@ -332,6 +341,22 @@ class HttpCodexMobileApi implements CodexMobileApi {
     if (_accessToken case final token?) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
     }
+  }
+
+  static BridgeEndpoint? _createEndpoint(String bridgeUrl) {
+    final value = bridgeUrl.trim();
+    if (value.isEmpty) {
+      return null;
+    }
+    return BridgeEndpoint(value);
+  }
+
+  BridgeEndpoint _requireEndpoint() {
+    final endpoint = _endpoint;
+    if (endpoint == null) {
+      throw StateError('请输入 Bridge 地址后再连接。');
+    }
+    return endpoint;
   }
 
   List<Map<String, Object?>> _readList(

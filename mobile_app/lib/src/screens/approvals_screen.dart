@@ -16,7 +16,7 @@ class ApprovalsScreen extends StatelessWidget {
       builder: (context, snapshot) {
         final approvals = snapshot.data;
         return ScreenFrame(
-          title: 'Approvals',
+          title: '审批',
           icon: Icons.verified_user,
           child: _ApprovalList(api: api, approvals: approvals),
         );
@@ -39,7 +39,7 @@ class _ApprovalList extends StatelessWidget {
     if (approvals!.isEmpty) {
       return const SizedBox(
         height: 240,
-        child: EmptyView(message: 'No pending approvals.'),
+        child: EmptyView(message: '当前没有待处理审批。'),
       );
     }
     return Column(
@@ -76,7 +76,7 @@ class _ApprovalList extends StatelessWidget {
                             approvalId: approval.id,
                             action: ApprovalAction.approve,
                           ),
-                          child: const Text('Approve'),
+                          child: const Text('批准'),
                         ),
                       if (approval.actions.contains(ApprovalAction.reject))
                         OutlinedButton(
@@ -84,7 +84,7 @@ class _ApprovalList extends StatelessWidget {
                             approvalId: approval.id,
                             action: ApprovalAction.reject,
                           ),
-                          child: const Text('Reject'),
+                          child: const Text('拒绝'),
                         ),
                     ],
                   ),

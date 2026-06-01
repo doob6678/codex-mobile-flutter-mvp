@@ -13,6 +13,7 @@ class PairingScreen extends StatefulWidget {
 }
 
 class _PairingScreenState extends State<PairingScreen> {
+  final TextEditingController _bridgeUrlController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
   PairingChallenge? _challenge;
   PairingResult? _result;
@@ -20,6 +21,7 @@ class _PairingScreenState extends State<PairingScreen> {
 
   @override
   void dispose() {
+    _bridgeUrlController.dispose();
     _codeController.dispose();
     super.dispose();
   }
@@ -27,32 +29,44 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
-      title: 'Pairing',
+      title: '配对',
       icon: Icons.link,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Connect to a trusted local bridge before browsing projects or releasing approvals.',
+            '先连接 Windows Bridge，再浏览项目、读取文件、同步 Codex 对话和处理审批。',
             style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            key: const Key('bridge-url-field'),
+            controller: _bridgeUrlController,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              labelText: 'Bridge 地址',
+              hintText: '例如 http://192.168.31.25:5010 或 Tailscale IP',
+              helperText: '手机不要使用 127.0.0.1；请填写 Windows 机器的真实局域网或组网地址。',
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _startPairing,
             icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Start pairing'),
+            label: const Text('开始配对'),
           ),
           if (_challenge != null) ...[
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.pin),
-              title: Text('Pairing code ${_challenge!.code}'),
-              subtitle: Text('Expires at ${_challenge!.expiresAt.toLocal()}'),
+              title: Text('配对码 ${_challenge!.code}'),
+              subtitle: Text('过期时间 ${_challenge!.expiresAt.toLocal()}'),
             ),
             TextField(
               controller: _codeController,
               decoration: const InputDecoration(
-                labelText: 'Pairing code',
+                labelText: '配对码',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -60,15 +74,15 @@ class _PairingScreenState extends State<PairingScreen> {
             FilledButton.icon(
               onPressed: _completePairing,
               icon: const Icon(Icons.verified_user),
-              label: const Text('Complete pairing'),
+              label: const Text('完成配对'),
             ),
           ],
           if (_result != null) ...[
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.check_circle),
-              title: Text('Paired with ${_result!.pairedDeviceName}'),
-              subtitle: const Text('Bridge token is active for this session.'),
+              title: Text('已配对 ${_result!.pairedDeviceName}'),
+              subtitle: const Text('当前会话已获得 Bridge 访问令牌。'),
             ),
           ],
           if (_error != null) ...[
@@ -82,6 +96,12 @@ class _PairingScreenState extends State<PairingScreen> {
 
   Future<void> _startPairing() async {
     try {
+      final bridgeUrl = _bridgeUrlController.text.trim();
+      if (bridgeUrl.isEmpty) {
+        setState(() => _error = '请输入 Windows Bridge 地址。');
+        return;
+      }
+      widget.api.setBridgeUrl(bridgeUrl);
       final challenge = await widget.api.startPairing();
       setState(() {
         _challenge = challenge;
@@ -95,8 +115,13 @@ class _PairingScreenState extends State<PairingScreen> {
 
   Future<void> _completePairing() async {
     try {
+      final bridgeUrl = _bridgeUrlController.text.trim();
+      if (bridgeUrl.isEmpty) {
+        setState(() => _error = '请输入 Windows Bridge 地址。');
+        return;
+      }
       final result = await widget.api.completePairing(
-        bridgeUrl: '',
+        bridgeUrl: bridgeUrl,
         pairingCode: _codeController.text,
       );
       setState(() {

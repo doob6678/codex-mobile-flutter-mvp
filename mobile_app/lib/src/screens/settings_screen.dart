@@ -12,32 +12,32 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
-      title: 'Settings',
+      title: '设置',
       icon: Icons.settings,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const ListTile(
             leading: Icon(Icons.security),
-            title: Text('Bridge safety'),
+            title: Text('Bridge 安全'),
             subtitle: Text(
-              'Release builds require HTTPS or trusted local bridge pairing; never expose the Windows Bridge on an untrusted network.',
+              '发布版应使用 HTTPS 或可信的本地 Bridge 配对，不要把 Windows Bridge 暴露到不可信网络。',
             ),
           ),
           const Divider(),
           SwitchListTile(
             value: true,
             onChanged: (_) {},
-            title: const Text('Require approval before command execution'),
+            title: const Text('执行命令前必须审批'),
             subtitle: const Text(
-              'Command approvals remain explicit on mobile.',
+              '手机端始终保持显式审批。',
             ),
           ),
           SwitchListTile(
             value: true,
             onChanged: (_) {},
-            title: const Text('Redact local secrets in previews'),
-            subtitle: const Text('Sensitive bridge values stay off screen.'),
+            title: const Text('预览中自动隐藏本地密钥'),
+            subtitle: const Text('敏感 Bridge 值不会直接显示。'),
           ),
           const Divider(),
           FutureBuilder<BridgeNetworkSummary>(
@@ -46,8 +46,8 @@ class SettingsScreen extends StatelessWidget {
               if (!snapshot.hasData) {
                 return const ListTile(
                   leading: Icon(Icons.wifi_tethering),
-                  title: Text('Mobile bridge URLs'),
-                  subtitle: Text('Loading local network interfaces'),
+                  title: Text('手机可用的 Bridge 地址'),
+                  subtitle: Text('正在加载本机网络接口'),
                 );
               }
 
@@ -81,11 +81,11 @@ class _NetworkSummaryView extends StatelessWidget {
                   ? Icons.public
                   : Icons.lock,
             ),
-          title: const Text('Mobile bridge URLs'),
+          title: const Text('手机可用的 Bridge 地址'),
           subtitle: Text(
             summary.publicExposureAllowed
-                ? 'Public hosts are enabled by a temporary environment variable.'
-                : 'Only loopback, private LAN, and mesh/VPN addresses are shown by default.',
+                ? '已通过临时环境变量启用公网地址。'
+                : '默认只显示本机、局域网和组网/VPN 地址。',
           ),
         ),
         for (final endpoint in endpoints)
@@ -94,7 +94,7 @@ class _NetworkSummaryView extends StatelessWidget {
             leading: Icon(_scopeIcon(endpoint.scope)),
             title: Text(endpoint.url),
             subtitle: Text(
-              '${endpoint.scope} · ${endpoint.requiresPairing ? 'pairing token required' : 'no pairing token'}',
+              '${endpoint.scope} · ${endpoint.requiresPairing ? '需要配对令牌' : '无需配对令牌'}',
             ),
           ),
         for (final warning in summary.warnings)

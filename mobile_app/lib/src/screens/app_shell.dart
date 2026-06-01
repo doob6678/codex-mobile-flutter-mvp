@@ -20,7 +20,8 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _selectedIndex = 1;
+  int _selectedIndex = 0;
+  bool _navigationOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -37,19 +38,33 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Row(
           children: [
-            NavigationRail(
-              extended: MediaQuery.sizeOf(context).width >= 720,
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _select,
-              labelType: MediaQuery.sizeOf(context).width >= 720
-                  ? NavigationRailLabelType.none
-                  : NavigationRailLabelType.all,
-              destinations: destinations,
+            Container(
+              width: _navigationOpen ? 184 : 64,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  right: BorderSide(color: Color(0xFFE5E7EB)),
+                ),
+              ),
+              child: _Sidebar(
+                open: _navigationOpen,
+                selectedIndex: _selectedIndex,
+                destinations: destinations,
+                onToggle: () => setState(() {
+                  _navigationOpen = !_navigationOpen;
+                }),
+                onSelected: (index) {
+                  _select(index);
+                  setState(() {
+                    _navigationOpen = false;
+                  });
+                },
+              ),
             ),
-            const VerticalDivider(width: 1),
             Expanded(child: screens[_selectedIndex]),
           ],
         ),
@@ -63,48 +78,161 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  List<NavigationRailDestination> _destinations() {
+  List<_Destination> _destinations() {
     return const [
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.link),
         selectedIcon: Icon(Icons.link_rounded),
-        label: Text('Pairing'),
+        label: '配对',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.dashboard_outlined),
         selectedIcon: Icon(Icons.dashboard),
-        label: Text('Dashboard'),
+        label: '概览',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.folder_outlined),
         selectedIcon: Icon(Icons.folder),
-        label: Text('Projects'),
+        label: '项目',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.description_outlined),
         selectedIcon: Icon(Icons.description),
-        label: Text('Files'),
+        label: '文件',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.chat_bubble_outline),
         selectedIcon: Icon(Icons.chat_bubble),
-        label: Text('Conversations'),
+        label: '对话',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.verified_user_outlined),
         selectedIcon: Icon(Icons.verified_user),
-        label: Text('Approvals'),
+        label: '审批',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.track_changes_outlined),
         selectedIcon: Icon(Icons.track_changes),
-        label: Text('Goals'),
+        label: '目标',
       ),
-      NavigationRailDestination(
+      _Destination(
         icon: Icon(Icons.settings_outlined),
         selectedIcon: Icon(Icons.settings),
-        label: Text('Settings'),
+        label: '设置',
       ),
     ];
+  }
+}
+
+class _Destination {
+  const _Destination({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+  });
+
+  final Icon icon;
+  final Icon selectedIcon;
+  final String label;
+}
+
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({
+    required this.open,
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onToggle,
+    required this.onSelected,
+  });
+
+  final bool open;
+  final int selectedIndex;
+  final List<_Destination> destinations;
+  final VoidCallback onToggle;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        IconButton(
+          tooltip: open ? '收起侧边栏' : '打开侧边栏',
+          onPressed: onToggle,
+          icon: Icon(open ? Icons.menu_open : Icons.menu),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            itemCount: destinations.length,
+            itemBuilder: (context, index) {
+              final destination = destinations[index];
+              final selected = selectedIndex == index;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Material(
+                  color: selected ? const Color(0xFFF3F4F6) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => onSelected(index),
+                    child: SizedBox(
+                      height: 48,
+                      child: open
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Row(
+                                children: [
+                                  IconTheme(
+                                    data: IconThemeData(
+                                      color: selected
+                                          ? const Color(0xFF111827)
+                                          : const Color(0xFF6B7280),
+                                    ),
+                                    child: selected
+                                        ? destination.selectedIcon
+                                        : destination.icon,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      destination.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: selected
+                                            ? const Color(0xFF111827)
+                                            : const Color(0xFF4B5563),
+                                        fontWeight: selected
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Center(
+                              child: IconTheme(
+                                data: IconThemeData(
+                                  color: selected
+                                      ? const Color(0xFF111827)
+                                      : const Color(0xFF6B7280),
+                                ),
+                                child: selected
+                                    ? destination.selectedIcon
+                                    : destination.icon,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

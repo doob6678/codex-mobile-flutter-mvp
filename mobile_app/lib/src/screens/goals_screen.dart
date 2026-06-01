@@ -29,11 +29,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
       builder: (context, snapshot) {
         final state = snapshot.data;
         return ScreenFrame(
-          title: 'Goals',
+          title: '目标',
           icon: Icons.track_changes,
           actions: [
             IconButton(
-              tooltip: 'Refresh',
+              tooltip: '刷新',
               onPressed: () => setState(() {}),
               icon: const Icon(Icons.refresh),
             ),
@@ -44,12 +44,12 @@ class _GoalsScreenState extends State<GoalsScreen> {
               if (snapshot.hasError)
                 const ListTile(
                   leading: Icon(Icons.link),
-                  title: Text('Pair the bridge to load live goal state.'),
+                  title: Text('请先完成 Bridge 配对，再加载实时目标状态。'),
                 ),
               TextField(
                 controller: _goalController,
                 decoration: const InputDecoration(
-                  labelText: '/goal objective',
+                  labelText: '/goal 目标',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -66,7 +66,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   }
                 },
                 icon: const Icon(Icons.flag),
-                label: const Text('Set /goal'),
+                label: const Text('设置 /goal'),
               ),
               const SizedBox(height: 20),
               _GoalSummary(goal: state?.goal),
@@ -90,7 +90,7 @@ class _GoalSummary extends StatelessWidget {
     if (goal == null) {
       return const SizedBox(
         height: 120,
-        child: EmptyView(message: 'No /goal set yet.'),
+        child: EmptyView(message: '还没有设置 /goal。'),
       );
     }
 
@@ -115,7 +115,7 @@ class _TaskList extends StatelessWidget {
     if (tasks.isEmpty) {
       return const SizedBox(
         height: 120,
-        child: EmptyView(message: 'No task progress has been reported yet.'),
+        child: EmptyView(message: '还没有任务进度。'),
       );
     }
 

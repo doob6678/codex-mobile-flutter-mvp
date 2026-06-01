@@ -2,6 +2,8 @@
 
 This repository implements the MVP path from `codex-mobile-flutter-research.md`: a Flutter mobile console talks to a Windows Bridge, while Windows keeps authority over files, commands, Codex app-server protocol adaptation, and secrets.
 
+中文使用流程见 [`docs/usage.md`](docs/usage.md)，包括 Windows Bridge 启动、手机真实 IP 配对、侧边栏入口、Codex 历史和知识库读取。
+
 ## What Is Included
 
 - `bridge/CodexMobile.Bridge`: .NET 8 ASP.NET Core Minimal API Bridge.

@@ -18,13 +18,16 @@ class ScreenFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        SliverAppBar.large(
+        SliverAppBar(
+          toolbarHeight: 72,
           title: Text(title),
           leading: Icon(icon),
           actions: actions,
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           sliver: SliverToBoxAdapter(child: child),
         ),
       ],

@@ -20,7 +20,7 @@ class DashboardScreen extends StatelessWidget {
       builder: (context, snapshot) {
         final status = snapshot.data;
         return ScreenFrame(
-          title: 'Dashboard',
+          title: '概览',
           icon: Icons.dashboard,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -30,32 +30,32 @@ class DashboardScreen extends StatelessWidget {
                 runSpacing: 12,
                 children: [
                   _SurfaceButton(
-                    label: 'Projects',
+                    label: '项目',
                     icon: Icons.folder_outlined,
                     onTap: () => onNavigate(2),
                   ),
                   _SurfaceButton(
-                    label: 'Files',
+                    label: '文件',
                     icon: Icons.description_outlined,
                     onTap: () => onNavigate(3),
                   ),
                   _SurfaceButton(
-                    label: 'Conversations',
+                    label: '对话',
                     icon: Icons.chat_bubble_outline,
                     onTap: () => onNavigate(4),
                   ),
                   _SurfaceButton(
-                    label: 'Approvals',
+                    label: '审批',
                     icon: Icons.verified_user_outlined,
                     onTap: () => onNavigate(5),
                   ),
                   _SurfaceButton(
-                    label: 'Goals',
+                    label: '目标',
                     icon: Icons.track_changes_outlined,
                     onTap: () => onNavigate(6),
                   ),
                   _SurfaceButton(
-                    label: 'Settings',
+                    label: '设置',
                     icon: Icons.settings_outlined,
                     onTap: () => onNavigate(7),
                   ),
@@ -67,13 +67,13 @@ class DashboardScreen extends StatelessWidget {
                   leading: const Icon(Icons.computer),
                   title: Text(
                     status?.connected == true
-                        ? 'Bridge connected'
-                        : 'Bridge not connected',
+                        ? 'Bridge 已连接'
+                        : 'Bridge 未连接',
                   ),
                   subtitle: Text(
                     status == null
-                        ? 'Waiting for bridge status'
-                        : 'Bridge ${status.bridgeVersion} · protocol ${status.protocolVersion}',
+                        ? '等待 Bridge 状态'
+                        : 'Bridge ${status.bridgeVersion} · 协议 ${status.protocolVersion}',
                   ),
                 ),
               ),
