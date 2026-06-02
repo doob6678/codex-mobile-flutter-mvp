@@ -14,6 +14,9 @@ New-Item -ItemType Directory -Force -Path $DistRoot | Out-Null
 
 Write-Host "==> Publishing Windows Bridge"
 $bridgeOut = Join-Path $DistRoot 'bridge-framework-dependent'
+if (Test-Path -LiteralPath $bridgeOut) {
+    Remove-Item -LiteralPath $bridgeOut -Recurse -Force
+}
 dotnet publish 'bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj' `
     -c Release `
     --no-self-contained `
@@ -26,6 +29,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $bridgeExeOut = Join-Path $DistRoot 'bridge-windows'
+if (Test-Path -LiteralPath $bridgeExeOut) {
+    Remove-Item -LiteralPath $bridgeExeOut -Recurse -Force
+}
 Write-Host "==> Publishing Windows Bridge self-contained exe"
 dotnet restore 'bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj' -r win-x64
 if ($LASTEXITCODE -ne 0) {

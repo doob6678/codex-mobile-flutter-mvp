@@ -8,12 +8,12 @@ Codex Mobile 是一个半成品但可运行的移动端/网页端远程控制台
 
 不想自己编译时，下载发布版整包：
 
-[Codex Mobile MVP v0.1.0 complete package](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.0)
+[Codex Mobile MVP v0.1.1 complete package](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.1)
 
 下载资产：
 
 ```text
-codex-mobile-v0.1.0-windows-android-ipad.zip
+codex-mobile-v0.1.1-windows-android-ipad.zip
 ```
 
 解压后目录结构大致是：
@@ -56,7 +56,7 @@ iPad/Web 不需要单独部署。Bridge 启动后，直接打开控制台打印�
 
 如果只要 APK，可以下载单独的 Android 发布版：
 
-[Codex Mobile Android APK v0.1.0](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.0-android)
+[Codex Mobile Android APK v0.1.1](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.1-android)
 
 注意：发布版整包可以直接运行 Bridge 和移动端，但 Windows 机器仍然需要已经安装并登录 Codex 桌面端或 Codex CLI。只有从源码重新打包时才需要 .NET SDK、Flutter SDK、Android SDK。
 

@@ -6,8 +6,8 @@ import 'src/screens/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final sessionStore = await SharedPreferencesBridgeSessionStore.create();
-  final savedSession = await sessionStore.load();
+  final sessionStore = await _createSessionStore();
+  final savedSession = await _loadSession(sessionStore);
   const defaultBridgeUrl = String.fromEnvironment(
     'BRIDGE_URL',
     defaultValue: '',
@@ -22,6 +22,22 @@ Future<void> main() async {
       ),
     ),
   );
+}
+
+Future<BridgeSessionStore> _createSessionStore() async {
+  try {
+    return await createBridgeSessionStore();
+  } catch (_) {
+    return MemoryBridgeSessionStore();
+  }
+}
+
+Future<BridgeSession> _loadSession(BridgeSessionStore sessionStore) async {
+  try {
+    return await sessionStore.load();
+  } catch (_) {
+    return const BridgeSession(bridgeUrl: '', accessToken: null);
+  }
 }
 
 class CodexMobileApp extends StatelessWidget {
