@@ -56,7 +56,7 @@ if (Test-Path -LiteralPath 'mobile_app' -PathType Container) {
     Push-Location 'mobile_app'
     try {
         Write-Host "==> Building Flutter iPad Web/PWA"
-        flutter build web --release --base-href /ipad/
+        flutter build web --release --base-href /ipad/ --pwa-strategy none
         if ($LASTEXITCODE -ne 0) {
             throw "iPad Web build failed."
         }

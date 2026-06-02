@@ -1,7 +1,9 @@
 using CodexMobile.Bridge.Hubs;
 using CodexMobile.Bridge.Models;
 using CodexMobile.Bridge.Services;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.FileProviders;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -14,6 +16,27 @@ builder.Logging.AddConsole();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+    [
+        "application/javascript",
+        "application/wasm",
+        "application/octet-stream",
+        "image/svg+xml",
+    ]);
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
 });
 
 builder.Services.AddSingleton<IClock, SystemClock>();
@@ -55,6 +78,8 @@ var app = builder.Build();
 var streamJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 streamJsonOptions.Converters.Add(new JsonStringEnumConverter());
 
+app.UseResponseCompression();
+
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     var port = BridgeHosting.ResolvePort(bindUrls);
@@ -93,6 +118,14 @@ if (Directory.Exists(ipadWebRoot))
     {
         FileProvider = new PhysicalFileProvider(ipadWebRoot),
         RequestPath = "/ipad",
+        OnPrepareResponse = context =>
+        {
+            var fileName = context.File.Name;
+            context.Context.Response.Headers.CacheControl =
+                string.Equals(fileName, "index.html", StringComparison.OrdinalIgnoreCase)
+                    ? "no-cache"
+                    : "public, max-age=604800";
+        },
     });
 }
 

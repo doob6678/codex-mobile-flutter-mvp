@@ -6,6 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../models/codex_file.dart';
 import 'file_preview_actions.dart';
+import 'html_preview.dart';
 
 export 'file_preview_actions.dart' show persistPreviewExport;
 
@@ -267,6 +268,10 @@ class _HtmlPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (supportsRenderedHtmlPreview) {
+      return RenderedHtmlPreview(html: html);
+    }
+
     return _HtmlFallback(content: html);
   }
 }
