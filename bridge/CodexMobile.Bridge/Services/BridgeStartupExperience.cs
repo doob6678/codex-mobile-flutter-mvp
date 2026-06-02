@@ -7,6 +7,7 @@ namespace CodexMobile.Bridge.Services;
 public sealed record BridgeStartupGuide(
     string LocalConnectUrl,
     IReadOnlyList<string> PhoneBridgeUrls,
+    IReadOnlyList<string> IpadWebUrls,
     string ConsoleText);
 
 public static class BridgeStartupExperience
@@ -22,10 +23,18 @@ public static class BridgeStartupExperience
             .Select(endpoint => endpoint.Url)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var ipadWebUrls = phoneBridgeUrls
+            .Select(ToIpadWebUrl)
+            .ToArray();
 
         var builder = new StringBuilder();
         builder.AppendLine("Codex Mobile Bridge ready");
         builder.AppendLine($"Windows-only QR page: {localConnectUrl}");
+        builder.AppendLine("iPad/Web URLs:");
+        foreach (var url in ipadWebUrls)
+        {
+            builder.AppendLine($"  - {url}");
+        }
         builder.AppendLine("Phone bridge URLs:");
         foreach (var url in phoneBridgeUrls)
         {
@@ -38,7 +47,13 @@ public static class BridgeStartupExperience
         return new BridgeStartupGuide(
             localConnectUrl,
             phoneBridgeUrls,
+            ipadWebUrls,
             builder.ToString().TrimEnd());
+    }
+
+    public static string ToIpadWebUrl(string bridgeUrl)
+    {
+        return $"{bridgeUrl.TrimEnd('/')}/ipad/";
     }
 
     public static void PrintAndOpen(BridgeStartupGuide guide)

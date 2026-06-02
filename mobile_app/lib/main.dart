@@ -1,13 +1,24 @@
 import 'package:flutter/material.dart';
 
+import 'src/api/bridge_session_store.dart';
 import 'src/api/codex_mobile_api.dart';
 import 'src/screens/app_shell.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final sessionStore = await SharedPreferencesBridgeSessionStore.create();
+  final savedSession = await sessionStore.load();
+  const defaultBridgeUrl = String.fromEnvironment(
+    'BRIDGE_URL',
+    defaultValue: '',
+  );
+
   runApp(
     CodexMobileApp(
       api: HttpCodexMobileApi(
-        const String.fromEnvironment('BRIDGE_URL', defaultValue: ''),
+        savedSession.hasBridgeUrl ? savedSession.bridgeUrl : defaultBridgeUrl,
+        accessToken: savedSession.accessToken,
+        sessionStore: sessionStore,
       ),
     ),
   );

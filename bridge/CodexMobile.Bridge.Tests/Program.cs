@@ -614,6 +614,9 @@ internal sealed class BridgeServiceTests
         AssertTrue(page.Html.Contains("连接 Codex Mobile Bridge", StringComparison.Ordinal), "Chinese title rendered");
         AssertTrue(page.Html.Contains("background:#fff", StringComparison.Ordinal), "white background rendered");
         AssertTrue(page.Html.Contains("http://127.0.0.1:51870", StringComparison.Ordinal), "alternative URL rendered");
+        AssertTrue(page.Html.Contains("iPad/Web 地址", StringComparison.Ordinal), "iPad web section rendered");
+        AssertTrue(page.Html.Contains("http://192.168.31.25:51870/ipad/", StringComparison.Ordinal), "LAN iPad URL rendered");
+        AssertTrue(page.Html.Contains("http://10.8.0.4:51870/ipad/", StringComparison.Ordinal), "VPN iPad URL rendered");
     }
 
     public void ConnectPageIsWindowsLocalOnly()
@@ -651,6 +654,9 @@ internal sealed class BridgeServiceTests
 
         AssertEqual("http://127.0.0.1:5010/connect", guide.LocalConnectUrl, "local QR page URL");
         AssertTrue(guide.PhoneBridgeUrls.Contains("http://10.250.236.241:5010"), "real phone bridge URL listed");
+        AssertTrue(guide.IpadWebUrls.Contains("http://10.250.236.241:5010/ipad/"), "iPad web URL listed");
+        AssertTrue(guide.ConsoleText.Contains("iPad/Web URLs", StringComparison.Ordinal), "console prints iPad URL section");
+        AssertTrue(guide.ConsoleText.Contains("http://10.250.236.241:5010/ipad/", StringComparison.Ordinal), "console prints real iPad URL");
         AssertTrue(guide.ConsoleText.Contains("http://10.250.236.241:5010", StringComparison.Ordinal), "console prints real phone URL");
         AssertTrue(guide.ConsoleText.Contains("http://127.0.0.1:5010/connect", StringComparison.Ordinal), "console prints local QR UI");
         AssertTrue(guide.ConsoleText.Contains("/connect 只能在 Windows 本机", StringComparison.Ordinal), "console explains local-only QR UI");

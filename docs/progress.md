@@ -28,6 +28,8 @@
 - `start-bridge.ps1` now attempts to launch/download `cloudflared.exe` and writes the temporary `https://*.trycloudflare.com` URL into the Bridge external URL file for 5G/cross-network phone pairing.
 - 2026-06-02: Refined `scripts/start-bridge.ps1`, `scripts/bridge-tunnel.ps1`, and `scripts/package.ps1` so Windows-local `127.0.0.1` QR pages are printed separately from phone-usable LAN/VPN/tunnel base URLs. The package now copies the shared startup script instead of embedding divergent launch text, and the usage docs/README now say the phone must use real reachable Bridge base URLs, not `/connect` or `127.0.0.1`.
 - 2026-06-02: Added iPad/PWA packaging under `/ipad/`. This route is intentionally public so an iPad can open it through LAN/VPN/Cloudflare tunnel, but `/connect` and `/pairing/start` are Windows-local only and must not render the QR challenge through a tunnel or LAN Host. Security boundary: iPad web can load the app shell externally; pairing QR generation stays on `127.0.0.1`/`localhost` on the Windows PC.
+- 2026-06-02: Mobile/iPad clients now persist the Bridge base URL and access token locally. If the phone browser/app is backgrounded long enough for the process or Web runtime to be reclaimed, reopening the client restores the saved Bridge session instead of losing the connection state. This does not survive a changed temporary tunnel URL, revoked/expired token, or stopped Bridge; those cases still require updating the address or pairing again.
+- 2026-06-02: Bridge startup output, `start-bridge.ps1`, and the Windows-local `/connect` page now print copyable iPad/Web URLs with `/ipad/` appended, while still keeping QR challenge generation local-only.
 
 ## Findings
 

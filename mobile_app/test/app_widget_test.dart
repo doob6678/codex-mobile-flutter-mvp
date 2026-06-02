@@ -782,6 +782,7 @@ class _FakeApi implements CodexMobileApi {
 
   final String threadTitle;
   String bridgeUrl = '';
+  String? accessToken;
   String? completedBridgeUrl;
   String? completedPairingCode;
   String? completedChallengeId;
@@ -801,6 +802,12 @@ class _FakeApi implements CodexMobileApi {
   List<CodexSyncEvent> syncEvents = const [];
   StreamController<CodexSyncSnapshot>? _syncStreamController;
   final Set<String> _alwaysFailBridgeUrls = <String>{};
+
+  @override
+  String get configuredBridgeUrl => bridgeUrl;
+
+  @override
+  bool get hasAccessToken => accessToken != null;
 
   void failFirstBridgeUrlOnce(String bridgeUrl) {
     _failBridgeUrlsOnce.add(bridgeUrl);
@@ -1156,7 +1163,9 @@ class _FakeApi implements CodexMobileApi {
   }) async {}
 
   @override
-  void setAccessToken(String? token) {}
+  void setAccessToken(String? token) {
+    accessToken = token?.trim().isEmpty == true ? null : token?.trim();
+  }
 
   @override
   void setBridgeUrl(String bridgeUrl) {

@@ -26,7 +26,10 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) {
+    final configuredBridgeUrl = widget.api.configuredBridgeUrl;
+    if (configuredBridgeUrl.isNotEmpty) {
+      _bridgeUrlController.text = configuredBridgeUrl;
+    } else if (kIsWeb) {
       _bridgeUrlController.text = Uri.base.origin;
     }
   }
@@ -136,7 +139,14 @@ class _PairingScreenState extends State<PairingScreen> {
             ListTile(
               leading: const Icon(Icons.check_circle),
               title: Text('已配对 ${_result!.pairedDeviceName}'),
-              subtitle: const Text('当前会话已获得 Bridge 访问令牌。'),
+              subtitle: const Text('Bridge 地址和访问令牌已保存在本机，App 恢复后会自动重连。'),
+            ),
+          ] else if (widget.api.hasAccessToken) ...[
+            const SizedBox(height: 16),
+            const ListTile(
+              leading: Icon(Icons.check_circle_outline),
+              title: Text('已保存 Bridge 配对'),
+              subtitle: Text('如果手机后台恢复后连接失败，请确认 Bridge 仍在运行，临时隧道 URL 没有变化。'),
             ),
           ],
           if (_error != null) ...[

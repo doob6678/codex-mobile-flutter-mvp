@@ -39,6 +39,7 @@ dependencies:
   open_filex: ^4.7.0
   webview_flutter: ^4.13.1
   http: ^1.6.0
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

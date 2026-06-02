@@ -214,12 +214,20 @@ if (-not $NoTunnel) {
 
 $windowsConnectUrls = @(Get-BridgeWindowsConnectUrls -BindUrls $Urls)
 $phoneBaseUrls = @(Get-BridgePhoneBaseUrls -BindUrls $Urls -ExternalUrlsFile $ExternalUrlsFile)
+$ipadWebUrls = @($phoneBaseUrls | ForEach-Object { "$($_.TrimEnd('/'))/ipad/" })
 
 Write-Host "Codex Mobile Bridge"
 Write-Host "Requested bind URLs: $Urls"
 Write-Host "Default port is fixed at 5010. It will not auto-switch to a random port; pass -Urls to choose another fixed port."
 Write-Host "Windows QR page, open on this PC only:"
 $windowsConnectUrls | ForEach-Object { Write-Host "  $_" }
+Write-Host "iPad/Web URLs, copy to iPad Safari or another browser:"
+if ($ipadWebUrls.Count -gt 0) {
+    $ipadWebUrls | ForEach-Object { Write-Host "  $_" }
+}
+else {
+    Write-Host "  No iPad/Web URL detected yet. Install/start a tunnel or bind to a real LAN/VPN address."
+}
 Write-Host "Phone Bridge base URLs, use in Android app or QR payload:"
 if ($phoneBaseUrls.Count -gt 0) {
     $phoneBaseUrls | ForEach-Object { Write-Host "  $_" }

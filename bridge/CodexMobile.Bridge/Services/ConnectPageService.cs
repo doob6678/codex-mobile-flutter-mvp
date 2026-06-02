@@ -118,6 +118,15 @@ public sealed class ConnectPageService
                   <code>{HtmlEncoder.Default.Encode(endpoint.Url)}</code>
                 </li>
                 """));
+        var ipadUrls = string.Join(
+            Environment.NewLine,
+            SelectMobileBridgeUrls(summary, preferred).Select(url =>
+                $"""
+                <li>
+                  <span>iPad/Web</span>
+                  <code>{HtmlEncoder.Default.Encode(BridgeStartupExperience.ToIpadWebUrl(url))}</code>
+                </li>
+                """));
         var warnings = string.Join(
             Environment.NewLine,
             summary.Warnings.Select(warning => $"<p class=\"warning\">{HtmlEncoder.Default.Encode(warning)}</p>"));
@@ -167,6 +176,9 @@ public sealed class ConnectPageService
                         <summary>连接密钥 JSON</summary>
                         <textarea readonly>{{WebUtility.HtmlEncode(payloadJson)}}</textarea>
                       </details>
+                      <h2>iPad/Web 地址</h2>
+                      <p>把下面任意一个地址发给 iPad 或其他浏览器打开；这些地址会自动带上 <code>/ipad/</code>。</p>
+                      <ul>{{ipadUrls}}</ul>
                       <h2>可用地址</h2>
                       <ul>{{endpoints}}</ul>
                       {{warnings}}

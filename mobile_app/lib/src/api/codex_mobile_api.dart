@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -12,8 +13,13 @@ import '../models/conversation.dart';
 import '../models/project.dart';
 import '../models/sync_state.dart';
 import 'bridge_endpoint.dart';
+import 'bridge_session_store.dart';
 
 abstract interface class CodexMobileApi {
+  String get configuredBridgeUrl;
+
+  bool get hasAccessToken;
+
   Future<BridgeStatus> getStatus();
 
   Future<CodexBackendStatus> getCodexStatus();
@@ -160,9 +166,16 @@ class BridgeHttpException implements Exception {
 }
 
 class HttpCodexMobileApi implements CodexMobileApi {
-  HttpCodexMobileApi(String bridgeUrl, {http.Client? client})
+  HttpCodexMobileApi(
+    String bridgeUrl, {
+    http.Client? client,
+    String? accessToken,
+    BridgeSessionStore? sessionStore,
+  })
     : _endpoint = _createEndpoint(bridgeUrl),
-      _client = client ?? http.Client();
+      _client = client ?? http.Client(),
+      _accessToken = _normalizeToken(accessToken),
+      _sessionStore = sessionStore;
 
   static const int _turnReplyPollAttempts = 90;
   static const Duration _turnReplyPollDelay = Duration(seconds: 2);
@@ -171,12 +184,19 @@ class HttpCodexMobileApi implements CodexMobileApi {
   BridgeEndpoint? _endpoint;
   final http.Client _client;
   String? _accessToken;
+  final BridgeSessionStore? _sessionStore;
   List<ConversationSummary>? _conversationCache;
   final Map<String, ConversationDetail> _conversationDetailCache = {};
   List<CodexThreadGroup>? _threadGroupCache;
   final Map<String, CodexThreadDetail> _threadDetailCache = {};
   CodexBackendStatus? _codexStatusCache;
   CodexSyncSnapshot? _syncStateCache;
+
+  @override
+  String get configuredBridgeUrl => _endpoint?.baseUri.toString() ?? '';
+
+  @override
+  bool get hasAccessToken => _accessToken != null;
 
   @override
   void setBridgeUrl(String bridgeUrl) {
@@ -187,11 +207,13 @@ class HttpCodexMobileApi implements CodexMobileApi {
     _threadDetailCache.clear();
     _codexStatusCache = null;
     _syncStateCache = null;
+    _persistSession();
   }
 
   @override
   void setAccessToken(String? token) {
-    _accessToken = token?.trim().isEmpty == true ? null : token?.trim();
+    _accessToken = _normalizeToken(token);
+    _persistSession();
   }
 
   @override
@@ -661,6 +683,30 @@ class HttpCodexMobileApi implements CodexMobileApi {
       headers['Authorization'] = 'Bearer $token';
     }
     return headers;
+  }
+
+  void _persistSession() {
+    final store = _sessionStore;
+    if (store == null) {
+      return;
+    }
+
+    final bridgeUrl = configuredBridgeUrl.trim();
+    if (bridgeUrl.isEmpty) {
+      unawaited(store.clear());
+      return;
+    }
+
+    unawaited(
+      store.save(
+        BridgeSession(bridgeUrl: bridgeUrl, accessToken: _accessToken),
+      ),
+    );
+  }
+
+  static String? _normalizeToken(String? token) {
+    final value = token?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   static BridgeEndpoint? _createEndpoint(String bridgeUrl) {
