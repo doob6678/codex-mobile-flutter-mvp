@@ -10,6 +10,21 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-bridge.ps1
 ```
 
+如果希望一次命令同时打开 Windows Codex 桌面端和 Bridge，用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-codex-mobile.ps1
+```
+
+发布包里同样可以运行：
+
+```powershell
+cd "%USERPROFILE%\Desktop\code\dev\codex_mobile_app\dist\bridge-windows"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-codex-mobile.ps1
+```
+
+这个脚本做的是“同一个入口启动两个程序”：先检测/打开 Windows Codex 桌面端，再运行 Bridge。它不是把 Bridge 接进桌面 Codex 的同一个 app-server。当前 Windows 版 `codex app-server daemon` 生命周期不可用，`codex app-server proxy` 也没有可连接的控制 socket，所以 Bridge 仍然保持自己的 `stdio://` app-server 进程；手机端实时显示依靠 Bridge 的 `/sync/stream`、`/sync/state` 和对本地 Codex 历史的轮询刷新。
+
 发布包里推荐直接启动 Windows exe：
 
 ```powershell

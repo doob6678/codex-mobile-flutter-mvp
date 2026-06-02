@@ -42,6 +42,8 @@ if ($LASTEXITCODE -ne 0) {
 
 Copy-Item -Force -Path 'scripts\start-bridge.ps1' -Destination (Join-Path $bridgeOut 'start-bridge.ps1')
 Copy-Item -Force -Path 'scripts\start-bridge.ps1' -Destination (Join-Path $bridgeExeOut 'start-bridge.ps1')
+Copy-Item -Force -Path 'scripts\start-codex-mobile.ps1' -Destination (Join-Path $bridgeOut 'start-codex-mobile.ps1')
+Copy-Item -Force -Path 'scripts\start-codex-mobile.ps1' -Destination (Join-Path $bridgeExeOut 'start-codex-mobile.ps1')
 Copy-Item -Force -Path 'scripts\bridge-tunnel.ps1' -Destination (Join-Path $bridgeOut 'bridge-tunnel.ps1')
 Copy-Item -Force -Path 'scripts\bridge-tunnel.ps1' -Destination (Join-Path $bridgeExeOut 'bridge-tunnel.ps1')
 

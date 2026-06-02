@@ -22,6 +22,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-bridge.ps1
 
 This binds the server to `http://0.0.0.0:5010` for local listening, prints a Windows-only QR page plus phone-usable LAN/VPN/tunnel base URLs, auto-detects the AgentScope Java Harness Markdown knowledge base under the desktop when present, and keeps all protected APIs behind pairing tokens.
 
+To open the Windows Codex desktop app and the Bridge from one command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-codex-mobile.ps1
+```
+
+This is a combined launcher, not a shared app-server mode. On Windows, `codex app-server daemon` lifecycle is not available and `codex app-server proxy` has no running control socket to attach to, so the Bridge keeps its own stdio app-server process while mobile sync uses Bridge state, local history polling, and `/sync/stream`.
+
 Manual equivalent:
 
 ```powershell
@@ -75,7 +83,7 @@ For a simple two-part release, build the Windows Bridge and mobile app:
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-The script publishes a Windows Bridge server, then tries to build the Android APK first and the Windows desktop client second. The Bridge package includes a shared `start-bridge.ps1` in both `dist\bridge-framework-dependent` and `dist\bridge-windows`; use the self-contained `dist\bridge-windows` folder when you do not want a .NET runtime dependency. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need `dist\mobile-android\app-release.apk` and one of the Bridge folders.
+The script publishes a Windows Bridge server, then tries to build the Android APK first and the Windows desktop client second. The Bridge package includes shared `start-bridge.ps1` and `start-codex-mobile.ps1` launchers in both `dist\bridge-framework-dependent` and `dist\bridge-windows`; use the self-contained `dist\bridge-windows` folder when you do not want a .NET runtime dependency. Android still requires a normal Flutter/Android toolchain on the build machine, but end users only need `dist\mobile-android\app-release.apk` and one of the Bridge folders.
 
 ## Security Boundary
 

@@ -132,12 +132,20 @@
 - Applied fix: Flutter model/widget regressions cover this path: a `mobile-bridge` `userMessage` parses as a normal USER message and the thread detail UI renders it after refresh instead of hiding it as technical output.
 - Verification: Bridge tests passed with 64 tests after adding mobile-user overlay and de-duplication coverage. `flutter analyze`, `flutter test test\model_api_test.dart`, `flutter test test\app_widget_test.dart`, and full `flutter test` passed with 54 Flutter tests. `scripts\package.ps1` refreshed Bridge, Android APK, and Windows client artifacts, and `scripts\smoke-packaged-runtime.ps1 -Port 51946` passed with `ThreadCount=102`, `FirstThreadItems=300`, `ThreadSource=local-codex-history`, and `GoalSynced=true`.
 
+### 2026-06-02 combined Windows Codex + Bridge launcher
+
+- Finding: `codex app-server daemon version` fails on Windows with `codex app-server daemon lifecycle is only supported on Unix platforms`. `codex app-server proxy` also fails because there is no reachable control socket at `%USERPROFILE%\.codex\app-server-control\app-server-control.sock`.
+- Finding: the running desktop app owns its own bundled `resources\codex.exe app-server --analytics-default-enabled` process, while Bridge starts separate `codex app-server --listen stdio://` processes. On this Windows build there is no verified supported path to merge Bridge into the already-open desktop app-server or force the desktop UI to live-refresh mobile turns.
+- Applied fix: added `scripts\start-codex-mobile.ps1`, a combined launcher that detects/starts the Windows Codex desktop app through its AppX id and then delegates to `scripts\start-bridge.ps1` with the same `-Urls`, `-DefaultProjects`, and `-NoTunnel` options.
+- Applied fix: `scripts\package.ps1` now copies `start-codex-mobile.ps1` into both Bridge distribution folders, and README/usage docs explain that this is a one-command startup path rather than a shared app-server mode.
+
 ## Verification
 
 - `dotnet run --no-restore --project .\bridge\CodexMobile.Bridge.Tests\CodexMobile.Bridge.Tests.csproj`
 - `flutter analyze`
 - `flutter test`
 - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -LiteralPath 'scripts\start-bridge.ps1' -Encoding UTF8 -Raw)) | Out-Null"`
+- `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -LiteralPath 'scripts\start-codex-mobile.ps1' -Encoding UTF8 -Raw)) | Out-Null"`
 - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -LiteralPath 'scripts\package.ps1' -Encoding UTF8 -Raw)) | Out-Null"`
 - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -LiteralPath 'scripts\smoke-packaged-runtime.ps1' -Encoding UTF8 -Raw)) | Out-Null"`
 - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke-packaged-runtime.ps1 -Port 51906`
