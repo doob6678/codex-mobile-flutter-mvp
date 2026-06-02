@@ -4,6 +4,62 @@ Codex Mobile 是一个半成品但可运行的移动端/网页端远程控制台
 
 当前状态要说清楚：手机和 iPad 已经能通过 Bridge 对话通信和控制一部分 Codex 工作流，但还不是 Windows 桌面 Codex UI 的完美实时镜像。Windows 桌面窗口本身有时不会立刻刷新，手机端依靠 Bridge 的 `/sync/stream`、`/sync/state` 和本地历史轮询刷新。
 
+## 直接下载整包使用
+
+不想自己编译时，下载发布版整包：
+
+[Codex Mobile MVP v0.1.0 complete package](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.0)
+
+下载资产：
+
+```text
+codex-mobile-v0.1.0-windows-android-ipad.zip
+```
+
+解压后目录结构大致是：
+
+```text
+bridge-windows\          # Windows Bridge exe、启动脚本、内置 iPad Web、cloudflared 工具
+android\                 # Android APK
+README-START.md          # 发布包内的快速启动说明
+```
+
+在解压后的目录里启动：
+
+```powershell
+cd .\bridge-windows
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-codex-mobile.ps1
+```
+
+启动后控制台会打印三类地址：
+
+```text
+Windows QR page, open on this PC only:
+  http://127.0.0.1:5010/connect
+iPad/Web URLs, copy to iPad Safari or another browser:
+  http://192.168.x.x:5010/ipad/
+  https://xxxx.trycloudflare.com/ipad/
+Phone Bridge base URLs, use in Android app or QR payload:
+  http://192.168.x.x:5010
+  https://xxxx.trycloudflare.com
+```
+
+只在 Windows 本机打开 `http://127.0.0.1:5010/connect`。手机和 iPad 不要填 `0.0.0.0` 或 `127.0.0.1`。
+
+Android APK 在整包里：
+
+```text
+android\codex-mobile-android-app-release.apk
+```
+
+iPad/Web 不需要单独部署。Bridge 启动后，直接打开控制台打印的 `.../ipad/` 地址。
+
+如果只要 APK，可以下载单独的 Android 发布版：
+
+[Codex Mobile Android APK v0.1.0](https://github.com/doob6678/codex-mobile-flutter-mvp/releases/tag/v0.1.0-android)
+
+注意：发布版整包可以直接运行 Bridge 和移动端，但 Windows 机器仍然需要已经安装并登录 Codex 桌面端或 Codex CLI。只有从源码重新打包时才需要 .NET SDK、Flutter SDK、Android SDK。
+
 ## 依赖
 
 - Windows 10/11，PowerShell 5+。
