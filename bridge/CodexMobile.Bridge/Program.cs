@@ -1,6 +1,7 @@
 using CodexMobile.Bridge.Hubs;
 using CodexMobile.Bridge.Models;
 using CodexMobile.Bridge.Services;
+using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -69,16 +70,47 @@ app.Lifetime.ApplicationStarted.Register(() =>
     BridgeStartupExperience.PrintAndOpen(guide);
 });
 
+var ipadWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot", "ipad");
+if (Directory.Exists(ipadWebRoot))
+{
+    app.Use(async (context, next) =>
+    {
+        if (string.Equals(context.Request.Path.Value, "/ipad", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.Redirect("/ipad/");
+            return;
+        }
+
+        await next();
+    });
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = new PhysicalFileProvider(ipadWebRoot),
+        RequestPath = "/ipad",
+        DefaultFileNames = ["index.html"],
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(ipadWebRoot),
+        RequestPath = "/ipad",
+    });
+}
+
 app.Use(async (context, next) =>
 {
-    if (BridgeAccessPolicy.IsLocalOnlyEndpoint(context.Request.Path)
-        && !BridgeAccessPolicy.IsLocalAddress(context.Connection.RemoteIpAddress))
+    if (BridgeAccessPolicy.IsLocalOnlyEndpoint(context.Request.Path))
     {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        await context.Response.WriteAsJsonAsync(new
+        if (!BridgeAccessPolicy.IsLocalOnlyRequest(context))
         {
-            error = "This endpoint is local-only. Open /connect from Windows or pair from a local browser.",
-        });
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "This endpoint is Windows-local only. Open http://127.0.0.1:5010/connect on the Windows PC.",
+            });
+            return;
+        }
+
+        await next();
         return;
     }
 
@@ -425,8 +457,7 @@ public static class BridgeEndpointPolicy
     [
         "/health",
         "/security/status",
-        "/connect",
-        "/pairing/start",
+        "/ipad",
         "/pairing/complete",
         "/protocol",
     ];
@@ -435,8 +466,7 @@ public static class BridgeEndpointPolicy
     {
         return path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/security/status", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/connect", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/pairing/start", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/ipad", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/pairing/complete", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/protocol", StringComparison.OrdinalIgnoreCase);
     }

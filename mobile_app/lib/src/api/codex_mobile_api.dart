@@ -1,5 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/approval.dart';
 import '../models/bridge_network.dart';
@@ -147,16 +149,27 @@ class PairingChallenge {
   }
 }
 
+class BridgeHttpException implements Exception {
+  const BridgeHttpException(this.statusCode, this.body);
+
+  final int statusCode;
+  final String body;
+
+  @override
+  String toString() => 'Bridge returned $statusCode: $body';
+}
+
 class HttpCodexMobileApi implements CodexMobileApi {
-  HttpCodexMobileApi(String bridgeUrl, {HttpClient? client})
+  HttpCodexMobileApi(String bridgeUrl, {http.Client? client})
     : _endpoint = _createEndpoint(bridgeUrl),
-      _client = client ?? HttpClient();
+      _client = client ?? http.Client();
 
   static const int _turnReplyPollAttempts = 90;
   static const Duration _turnReplyPollDelay = Duration(seconds: 2);
+  static const Duration _syncPollDelay = Duration(seconds: 2);
 
   BridgeEndpoint? _endpoint;
-  final HttpClient _client;
+  final http.Client _client;
   String? _accessToken;
   List<ConversationSummary>? _conversationCache;
   final Map<String, ConversationDetail> _conversationDetailCache = {};
@@ -425,43 +438,53 @@ class HttpCodexMobileApi implements CodexMobileApi {
 
   @override
   Stream<CodexSyncSnapshot> watchSyncState() async* {
-    try {
-      final request = await _client.getUrl(
-        _requireEndpoint().uri('/sync/stream'),
-      );
-      _applyCommonHeaders(request);
-      request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
-      final response = await request.close();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final body = await utf8.decoder.bind(response).join();
-        throw HttpException('Bridge returned ${response.statusCode}: $body');
+    if (kIsWeb) {
+      while (true) {
+        yield await getSyncState();
+        await Future<void>.delayed(_syncPollDelay);
       }
-
-      var dataBuffer = StringBuffer();
-      await for (final line
-          in response.transform(utf8.decoder).transform(const LineSplitter())) {
-        if (line.startsWith('data:')) {
-          dataBuffer.write(line.substring(5).trimLeft());
-          continue;
+    } else {
+      try {
+        final request = http.Request(
+          'GET',
+          _requireEndpoint().uri('/sync/stream'),
+        );
+        request.headers.addAll(_commonHeaders());
+        request.headers['Accept'] = 'text/event-stream';
+        final response = await _client.send(request);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          final body = await utf8.decoder.bind(response.stream).join();
+          throw BridgeHttpException(response.statusCode, body);
         }
 
-        if (line.isEmpty && dataBuffer.isNotEmpty) {
-          final decoded = jsonDecode(dataBuffer.toString());
-          dataBuffer = StringBuffer();
-          if (decoded is Map<String, Object?>) {
-            final state = CodexSyncSnapshot.fromJson(decoded);
-            _syncStateCache = state;
-            yield state;
+        var dataBuffer = StringBuffer();
+        await for (final line
+            in response.stream
+                .transform(utf8.decoder)
+                .transform(const LineSplitter())) {
+          if (line.startsWith('data:')) {
+            dataBuffer.write(line.substring(5).trimLeft());
+            continue;
+          }
+
+          if (line.isEmpty && dataBuffer.isNotEmpty) {
+            final decoded = jsonDecode(dataBuffer.toString());
+            dataBuffer = StringBuffer();
+            if (decoded is Map<String, Object?>) {
+              final state = CodexSyncSnapshot.fromJson(decoded);
+              _syncStateCache = state;
+              yield state;
+            }
           }
         }
+      } catch (_) {
+        final cached = _syncStateCache;
+        if (cached != null) {
+          yield cached;
+          return;
+        }
+        rethrow;
       }
-    } catch (_) {
-      final cached = _syncStateCache;
-      if (cached != null) {
-        yield cached;
-        return;
-      }
-      rethrow;
     }
   }
 
@@ -515,33 +538,36 @@ class HttpCodexMobileApi implements CodexMobileApi {
     String path, [
     Map<String, String?> query = const {},
   ]) async {
-    final request = await _client.getUrl(_requireEndpoint().uri(path, query));
-    _applyCommonHeaders(request);
-    return _sendJsonRequest(request);
+    final response = await _client.get(
+      _requireEndpoint().uri(path, query),
+      headers: _commonHeaders(),
+    );
+    return _decodeJsonResponse(response);
   }
 
   Future<Map<String, Object?>> _postObject(
     String path,
     Map<String, Object?> body,
   ) async {
-    final request = await _client.postUrl(_requireEndpoint().uri(path));
-    _applyCommonHeaders(request);
-    request.headers.contentType = ContentType.json;
-    final encoded = utf8.encode(jsonEncode(body));
-    request.contentLength = encoded.length;
-    request.add(encoded);
-    final decoded = await _sendJsonRequest(request);
+    final response = await _client.post(
+      _requireEndpoint().uri(path),
+      headers: {
+        ..._commonHeaders(),
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: jsonEncode(body),
+    );
+    final decoded = _decodeJsonResponse(response);
     if (decoded is Map<String, Object?>) {
       return decoded;
     }
     throw const FormatException('Bridge response must be a JSON object');
   }
 
-  Future<Object?> _sendJsonRequest(HttpClientRequest request) async {
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+  Object? _decodeJsonResponse(http.Response response) {
+    final body = utf8.decode(response.bodyBytes, allowMalformed: true);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('Bridge returned ${response.statusCode}: $body');
+      throw BridgeHttpException(response.statusCode, body);
     }
     return jsonDecode(body);
   }
@@ -629,15 +655,20 @@ class HttpCodexMobileApi implements CodexMobileApi {
     }
   }
 
-  void _applyCommonHeaders(HttpClientRequest request) {
+  Map<String, String> _commonHeaders() {
+    final headers = <String, String>{};
     if (_accessToken case final token?) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      headers['Authorization'] = 'Bearer $token';
     }
+    return headers;
   }
 
   static BridgeEndpoint? _createEndpoint(String bridgeUrl) {
     final value = bridgeUrl.trim();
     if (value.isEmpty) {
+      if (kIsWeb) {
+        return BridgeEndpoint(Uri.base.origin);
+      }
       return null;
     }
     return BridgeEndpoint(value);

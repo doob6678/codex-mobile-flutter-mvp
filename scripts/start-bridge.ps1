@@ -48,7 +48,7 @@ function Get-BridgeWindowsConnectUrls {
     $urls = New-Object System.Collections.Generic.List[string]
     foreach ($part in (Get-BridgeUrlParts -BindUrls $BindUrls)) {
         $hostName = $part.Host
-        if ($hostName -in @('0.0.0.0', '*', '+')) {
+        if ($hostName -notin @('127.0.0.1', 'localhost', '::1')) {
             $hostName = '127.0.0.1'
         }
 

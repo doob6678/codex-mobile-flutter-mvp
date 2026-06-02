@@ -27,6 +27,11 @@ if ($LASTEXITCODE -ne 0) {
 
 $bridgeExeOut = Join-Path $DistRoot 'bridge-windows'
 Write-Host "==> Publishing Windows Bridge self-contained exe"
+dotnet restore 'bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj' -r win-x64
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows Bridge runtime restore failed."
+}
+
 dotnet publish 'bridge\CodexMobile.Bridge\CodexMobile.Bridge.csproj' `
     -c Release `
     -r win-x64 `
@@ -50,6 +55,28 @@ Copy-Item -Force -Path 'scripts\bridge-tunnel.ps1' -Destination (Join-Path $brid
 if (Test-Path -LiteralPath 'mobile_app' -PathType Container) {
     Push-Location 'mobile_app'
     try {
+        Write-Host "==> Building Flutter iPad Web/PWA"
+        flutter build web --release --base-href /ipad/
+        if ($LASTEXITCODE -ne 0) {
+            throw "iPad Web build failed."
+        }
+
+        $ipadWebOut = Join-Path $DistRoot 'mobile-ipad-web'
+        if (Test-Path -LiteralPath $ipadWebOut) {
+            Remove-Item -LiteralPath $ipadWebOut -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $ipadWebOut | Out-Null
+        Copy-Item -Recurse -Force -Path 'build\web\*' -Destination $ipadWebOut
+
+        foreach ($bridgePackage in @($bridgeOut, $bridgeExeOut)) {
+            $ipadBridgeRoot = Join-Path $bridgePackage 'wwwroot\ipad'
+            if (Test-Path -LiteralPath $ipadBridgeRoot) {
+                Remove-Item -LiteralPath $ipadBridgeRoot -Recurse -Force
+            }
+            New-Item -ItemType Directory -Force -Path $ipadBridgeRoot | Out-Null
+            Copy-Item -Recurse -Force -Path 'build\web\*' -Destination $ipadBridgeRoot
+        }
+
         Write-Host "==> Building Flutter Android APK"
         flutter build apk --release
         if ($LASTEXITCODE -eq 0) {

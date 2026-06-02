@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -22,6 +22,14 @@ class _PairingScreenState extends State<PairingScreen> {
   PairingChallenge? _challenge;
   PairingResult? _result;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _bridgeUrlController.text = Uri.base.origin;
+    }
+  }
 
   @override
   void dispose() {
@@ -67,9 +75,9 @@ class _PairingScreenState extends State<PairingScreen> {
                 label: const Text('扫描 Bridge QR'),
               ),
               OutlinedButton.icon(
-                onPressed: _startPairing,
+                onPressed: kIsWeb ? null : _startPairing,
                 icon: const Icon(Icons.pin),
-                label: const Text('开始配对'),
+                label: Text(kIsWeb ? 'iPad 使用 QR 配对' : '开始配对'),
               ),
             ],
           ),
@@ -244,11 +252,11 @@ class _PairingScreenState extends State<PairingScreen> {
           _error = null;
         });
         return;
-      } on SocketException catch (error) {
-        lastError = error;
-      } on HttpException catch (error) {
+      } on BridgeHttpException catch (error) {
         lastError = error;
         break;
+      } catch (error) {
+        lastError = error;
       }
     }
 
@@ -268,7 +276,7 @@ class _PairingScreenState extends State<PairingScreen> {
       return '这个二维码配对挑战已使用或过期。请刷新 Windows 上的 /connect 页面，重新扫码。';
     }
 
-    if (lastError is SocketException && privateCandidates.isNotEmpty) {
+    if (_looksLikeNetworkRouteError(lastError) && privateCandidates.isNotEmpty) {
       final first = privateCandidates.first;
       return '当前手机网络无法路由到 Windows 内网地址 $first。请改用 Cloudflare/Tailscale/ZeroTier/WireGuard 等跨网地址，或在 Windows 端设置 CODEX_MOBILE_EXTERNAL_BRIDGE_URLS 后重新扫码。';
     }
@@ -309,6 +317,16 @@ class _PairingScreenState extends State<PairingScreen> {
 
     return false;
   }
+
+  bool _looksLikeNetworkRouteError(Object? error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('socketexception') ||
+        message.contains('xmlhttprequest') ||
+        message.contains('failed to fetch') ||
+        message.contains('networkerror') ||
+        message.contains('no route') ||
+        message.contains('connection reset');
+  }
 }
 
 class _PairingExplainer extends StatelessWidget {
@@ -334,7 +352,9 @@ class _PairingExplainer extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              '在 Windows Bridge 的 /connect 页面扫码最直接；如果不能扫码，就手动输入 Bridge 地址，然后用页面显示的 challengeId 和 code 完成同一次挑战。',
+              kIsWeb
+                  ? 'iPad 版请在 Windows 本机打开 /connect，然后扫描二维码或粘贴页面里的 QR JSON；远程 iPad 不直接发起新的本地配对挑战。'
+                  : '在 Windows Bridge 的 /connect 页面扫码最直接；如果不能扫码，就手动输入 Bridge 地址，然后用页面显示的 challengeId 和 code 完成同一次挑战。',
             ),
           ],
         ),

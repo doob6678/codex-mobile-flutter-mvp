@@ -1,13 +1,13 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/codex_file.dart';
+import 'file_preview_actions.dart';
+
+export 'file_preview_actions.dart' show persistPreviewExport;
 
 class FilePreviewScreen extends StatefulWidget {
   const FilePreviewScreen({
@@ -120,7 +120,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         bytes: bytes,
       );
       if (openAfterSave) {
-        await OpenFilex.open(path);
+        await openPreviewExport(path);
       }
 
       if (!mounted) {
@@ -128,7 +128,10 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
       }
       setState(() {
         _working = false;
-        _message = openAfterSave ? '已保存并尝试使用其他应用打开：$path' : '已保存到本地：$path';
+        _message = previewExportSavedMessage(
+          path,
+          openAfterSave: openAfterSave,
+        );
       });
     } catch (error) {
       if (!mounted) {
@@ -216,28 +219,6 @@ class _FullscreenPreviewScreen extends StatelessWidget {
   }
 }
 
-Future<String> persistPreviewExport({
-  required String fileName,
-  required List<int> bytes,
-}) async {
-  final directory = Directory(
-    '${Directory.systemTemp.path}${Platform.pathSeparator}codex-mobile',
-  );
-  if (!directory.existsSync()) {
-    await directory.create(recursive: true);
-  }
-
-  final safeName = _safeFileName(fileName);
-  final file = File('${directory.path}${Platform.pathSeparator}$safeName');
-  await file.writeAsBytes(bytes, flush: true);
-  return file.path;
-}
-
-String _safeFileName(String value) {
-  final normalized = value.replaceAll(RegExp(r'[\\/:"*?<>|]+'), '_');
-  return normalized.isEmpty ? 'codex-file' : normalized;
-}
-
 class _MarkdownPreview extends StatelessWidget {
   const _MarkdownPreview({required this.content});
 
@@ -279,80 +260,15 @@ class _PlainTextPreview extends StatelessWidget {
   }
 }
 
-class _HtmlPreview extends StatefulWidget {
+class _HtmlPreview extends StatelessWidget {
   const _HtmlPreview({required this.html});
 
   final String html;
 
   @override
-  State<_HtmlPreview> createState() => _HtmlPreviewState();
-}
-
-class _HtmlPreviewState extends State<_HtmlPreview> {
-  late final WebViewController? _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    if (!_supportsEmbeddedHtmlPreview) {
-      _controller = null;
-      return;
-    }
-
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
-      ..loadHtmlString(_prepareHtml(widget.html));
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    if (controller == null) {
-      return _HtmlFallback(content: widget.html);
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: WebViewWidget(controller: controller),
-    );
+    return _HtmlFallback(content: html);
   }
-}
-
-String _prepareHtml(String html) {
-  final hasViewport = RegExp(
-    r'<meta\s+[^>]*name=["'']viewport["'']',
-    caseSensitive: false,
-  ).hasMatch(html);
-  final viewport =
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">';
-  final fitStyle =
-      '<style>html,body{margin:0;padding:0;max-width:100%;overflow-wrap:anywhere;}'
-      'img,video,canvas,svg,table{max-width:100%;height:auto;}'
-      'pre{white-space:pre-wrap;}</style>';
-
-  if (RegExp(r'<head[^>]*>', caseSensitive: false).hasMatch(html)) {
-    return html.replaceFirstMapped(
-      RegExp(r'<head[^>]*>', caseSensitive: false),
-      (match) => '${match.group(0)}${hasViewport ? '' : viewport}$fitStyle',
-    );
-  }
-
-  return '<!doctype html><html><head>$viewport$fitStyle</head><body>$html</body></html>';
-}
-
-bool get _supportsEmbeddedHtmlPreview {
-  if (kIsWeb) {
-    return false;
-  }
-  return switch (defaultTargetPlatform) {
-    TargetPlatform.android ||
-    TargetPlatform.iOS ||
-    TargetPlatform.macOS => true,
-    TargetPlatform.fuchsia ||
-    TargetPlatform.linux ||
-    TargetPlatform.windows => false,
-  };
 }
 
 class _HtmlFallback extends StatelessWidget {

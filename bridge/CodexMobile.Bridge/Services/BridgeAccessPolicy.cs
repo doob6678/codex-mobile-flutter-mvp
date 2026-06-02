@@ -25,4 +25,26 @@ public static class BridgeAccessPolicy
 
         return false;
     }
+
+    public static bool IsLocalHost(HostString host)
+    {
+        var value = host.Host.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        value = value.Trim('[', ']');
+
+        return string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "::1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsLocalOnlyRequest(HttpContext context)
+    {
+        return IsLocalOnlyEndpoint(context.Request.Path)
+            && IsLocalAddress(context.Connection.RemoteIpAddress)
+            && IsLocalHost(context.Request.Host);
+    }
 }

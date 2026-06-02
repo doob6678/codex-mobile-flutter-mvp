@@ -33,7 +33,7 @@ var cases = new (string Name, Action Test)[]
     ("codex app-server gateway reports local history status without app-server probe", tests.CodexGatewayReportsLocalHistoryStatusWithoutAppServerProbe),
     ("connect page prefers reachable non-loopback bridge URL", tests.ConnectPagePrefersReachableNonLoopbackBridgeUrl),
     ("connection page creates QR pairing payload", tests.ConnectionPageCreatesQrPairingPayload),
-    ("connect page is public", tests.ConnectPageIsPublic),
+    ("connect page is Windows-local only", tests.ConnectPageIsWindowsLocalOnly),
     ("startup guide prints real phone URLs and local QR page", tests.StartupGuidePrintsRealPhoneUrlsAndLocalQrPage),
     ("pairing challenge includes secret id and code", tests.PairingChallengeIncludesSecretIdAndCode),
     ("pairing complete requires challenge id", tests.PairingCompleteRequiresChallengeId),
@@ -616,11 +616,25 @@ internal sealed class BridgeServiceTests
         AssertTrue(page.Html.Contains("http://127.0.0.1:51870", StringComparison.Ordinal), "alternative URL rendered");
     }
 
-    public void ConnectPageIsPublic()
+    public void ConnectPageIsWindowsLocalOnly()
     {
-        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect")), "/connect should be public");
-        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect/")), "/connect slash should be public");
+        AssertFalse(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect")), "/connect should not be public");
+        AssertFalse(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/connect/")), "/connect slash should not be public");
+        AssertFalse(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/pairing/start")), "/pairing/start should not be public");
+        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/ipad")), "/ipad should stay public for iPad");
+        AssertTrue(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/pairing/complete")), "/pairing/complete remains public for paired QR flow");
         AssertFalse(BridgeEndpointPolicy.IsPublicEndpoint(new Microsoft.AspNetCore.Http.PathString("/projects")), "projects should stay protected");
+
+        AssertTrue(BridgeAccessPolicy.IsLocalHost(new HostString("127.0.0.1:5010")), "loopback host allowed");
+        AssertTrue(BridgeAccessPolicy.IsLocalHost(new HostString("localhost:5010")), "localhost allowed");
+        AssertTrue(BridgeAccessPolicy.IsLocalHost(new HostString("[::1]:5010")), "IPv6 loopback host allowed");
+        AssertFalse(BridgeAccessPolicy.IsLocalHost(new HostString("move-president-guns-victorian.trycloudflare.com")), "tunnel host rejected");
+        AssertFalse(BridgeAccessPolicy.IsLocalHost(new HostString("10.250.236.241:5010")), "LAN host rejected");
+
+        AssertTrue(IsLocalOnlyRequest("/connect", "127.0.0.1:5010", IPAddress.Loopback), "local connect allowed");
+        AssertFalse(IsLocalOnlyRequest("/connect", "move-president-guns-victorian.trycloudflare.com", IPAddress.Loopback), "tunnel host cannot render QR");
+        AssertFalse(IsLocalOnlyRequest("/connect", "10.250.236.241:5010", IPAddress.Loopback), "LAN host cannot render QR");
+        AssertFalse(IsLocalOnlyRequest("/connect", "127.0.0.1:5010", IPAddress.Parse("10.250.236.241")), "remote address cannot render QR");
     }
 
     public void StartupGuidePrintsRealPhoneUrlsAndLocalQrPage()
@@ -637,9 +651,11 @@ internal sealed class BridgeServiceTests
 
         AssertEqual("http://127.0.0.1:5010/connect", guide.LocalConnectUrl, "local QR page URL");
         AssertTrue(guide.PhoneBridgeUrls.Contains("http://10.250.236.241:5010"), "real phone bridge URL listed");
-        AssertTrue(guide.PhoneConnectUrls.Contains("http://10.250.236.241:5010/connect"), "real phone QR URL listed");
         AssertTrue(guide.ConsoleText.Contains("http://10.250.236.241:5010", StringComparison.Ordinal), "console prints real phone URL");
         AssertTrue(guide.ConsoleText.Contains("http://127.0.0.1:5010/connect", StringComparison.Ordinal), "console prints local QR UI");
+        AssertTrue(guide.ConsoleText.Contains("/connect 只能在 Windows 本机", StringComparison.Ordinal), "console explains local-only QR UI");
+        AssertFalse(guide.ConsoleText.Contains("Phone QR URLs", StringComparison.Ordinal), "console does not print remote QR URLs");
+        AssertFalse(guide.ConsoleText.Contains("http://10.250.236.241:5010/connect", StringComparison.Ordinal), "console does not expose LAN QR URL");
         AssertTrue(guide.ConsoleText.Contains("不要在手机填 0.0.0.0", StringComparison.Ordinal), "console explains 0.0.0.0");
     }
 
@@ -735,6 +751,7 @@ internal sealed class BridgeServiceTests
         AssertTrue(status.LocalOnlyEndpoints.Contains("/connect"), "connect local-only status listed");
         AssertTrue(status.LocalOnlyEndpoints.Contains("/pairing/start"), "pairing start local-only status listed");
         AssertTrue(status.PublicEndpoints.Contains("/security/status"), "status endpoint listed");
+        AssertTrue(status.PublicEndpoints.Contains("/ipad"), "iPad web app endpoint listed");
         AssertTrue(status.PublicEndpoints.Contains("/pairing/complete"), "pairing complete endpoint listed");
         AssertFalse(status.PublicEndpoints.Contains("/pairing"), "pairing namespace must not be public");
         AssertFalse(status.PublicEndpoints.Contains("token"), "status must not include tokens");
@@ -1587,6 +1604,15 @@ internal sealed class BridgeServiceTests
     }
 
     private static void AssertFalse(bool condition, string message) => AssertTrue(!condition, message);
+
+    private static bool IsLocalOnlyRequest(string path, string host, IPAddress remoteAddress)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = new PathString(path);
+        context.Request.Host = new HostString(host);
+        context.Connection.RemoteIpAddress = remoteAddress;
+        return BridgeAccessPolicy.IsLocalOnlyRequest(context);
+    }
 
     private static void AssertEqual<T>(T expected, T actual, string message)
     {
