@@ -11,7 +11,23 @@ public sealed record CodexFileEntry(
     long Size,
     DateTimeOffset ModifiedAt);
 
-public sealed record FileReadResponse(string ProjectId, string Path, string Content, string Hash, long Size, string Language);
+public sealed record FileReadResponse(
+    string ProjectId,
+    string Path,
+    string Content,
+    string Hash,
+    long Size,
+    string Language,
+    string ContentType);
+
+public sealed record FileDownloadResponse(
+    string ProjectId,
+    string Path,
+    string FileName,
+    string ContentType,
+    long Size,
+    byte[] Bytes,
+    string? Language);
 
 public sealed record FileHashResponse(string ProjectId, string Path, string Hash);
 
@@ -19,11 +35,31 @@ public sealed record FilePatchRequest(string ProjectId, string Path, string Expe
 
 public sealed record FilePatchResponse(string ProjectId, string Path, string PreviousHash, string NewHash, bool Applied);
 
-public sealed record PairingCompleteRequest(string Code);
+public sealed record PairingCompleteRequest(string Code, string ChallengeId);
 
-public sealed record PairingChallenge(string Code, DateTimeOffset ExpiresAt);
+public sealed record PairingChallenge(string Id, string Code, DateTimeOffset ExpiresAt);
 
 public sealed record PairingToken(string AccessToken, DateTimeOffset ExpiresAt, string DeviceName = "mobile-device");
+
+public sealed record PairingTokenStatus(
+    string Fingerprint,
+    string DeviceName,
+    DateTimeOffset ExpiresAt,
+    bool IsCurrent);
+
+public sealed record PairingSecuritySnapshot(
+    int ActiveChallenges,
+    int FailedAttempts,
+    int FailedAttemptLimit,
+    DateTimeOffset? CooldownUntil,
+    int SuccessfulPairings,
+    DateTimeOffset? LastPairedAt);
+
+public sealed record BridgeSecurityStatus(
+    bool PairingRequiresChallengeId,
+    IReadOnlyList<string> LocalOnlyEndpoints,
+    IReadOnlyList<string> PublicEndpoints,
+    PairingSecuritySnapshot? Pairing = null);
 
 public sealed record CommandRequest(string Command, string WorkingDirectory);
 
@@ -47,6 +83,7 @@ public sealed record ConversationRecord(
     string Title,
     string ProjectId,
     string WorkingDirectory,
+    string? CodexThreadId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
@@ -166,8 +203,18 @@ public sealed record CodexSyncEvent(
     DateTimeOffset Timestamp,
     IReadOnlyDictionary<string, object?> Payload);
 
+public sealed record MobileUserMessageRecord(
+    string Id,
+    string ThreadId,
+    string Role,
+    string Text,
+    string Source,
+    string? JobId,
+    DateTimeOffset CreatedAt);
+
 public sealed record CodexSyncSnapshot(
     GoalRecord? Goal,
+    IReadOnlyList<GoalRecord> Goals,
     IReadOnlyList<CodexTaskRecord> Tasks,
     IReadOnlyList<CodexSyncEvent> Events,
     DateTimeOffset UpdatedAt);

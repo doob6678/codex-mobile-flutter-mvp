@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/codex_mobile_api.dart';
 import '../models/project.dart';
+import 'file_manager_screen.dart';
 import 'screen_frame.dart';
 
 class ProjectsScreen extends StatelessWidget {
@@ -18,7 +19,7 @@ class ProjectsScreen extends StatelessWidget {
         return ScreenFrame(
           title: '项目',
           icon: Icons.folder,
-          child: _ProjectList(projects: projects),
+          child: _ProjectList(api: api, projects: projects),
         );
       },
     );
@@ -26,8 +27,9 @@ class ProjectsScreen extends StatelessWidget {
 }
 
 class _ProjectList extends StatelessWidget {
-  const _ProjectList({required this.projects});
+  const _ProjectList({required this.api, required this.projects});
 
+  final CodexMobileApi api;
   final List<ProjectSummary>? projects;
 
   @override
@@ -43,7 +45,9 @@ class _ProjectList extends StatelessWidget {
     }
     return Column(
       children: [
-        for (final project in projects!)
+        for (final project in [
+          ...projects!,
+        ]..sort((a, b) => a.name.compareTo(b.name)))
           Card(
             child: ListTile(
               leading: Icon(
@@ -51,9 +55,17 @@ class _ProjectList extends StatelessWidget {
               ),
               title: Text(project.name),
               subtitle: Text(project.rootPath),
-              trailing: project.trusted
-                  ? const Text('已信任')
-                  : const Text('只读'),
+              trailing: project.trusted ? const Text('已信任') : const Text('只读'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => FileManagerScreen(
+                      api: api,
+                      initialProjectId: project.id,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
       ],

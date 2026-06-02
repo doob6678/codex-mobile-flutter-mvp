@@ -33,6 +33,58 @@ class BridgeNetworkSummary {
   }
 }
 
+class BridgeSecurityStatus {
+  const BridgeSecurityStatus({
+    required this.pairingRequiresChallengeId,
+    required this.localOnlyEndpoints,
+    required this.publicEndpoints,
+  });
+
+  final bool pairingRequiresChallengeId;
+  final List<String> localOnlyEndpoints;
+  final List<String> publicEndpoints;
+
+  factory BridgeSecurityStatus.fromJson(Map<String, Object?> json) {
+    final rawLocalOnly = json['localOnlyEndpoints'];
+    final rawPublic = json['publicEndpoints'];
+    return BridgeSecurityStatus(
+      pairingRequiresChallengeId:
+          json['pairingRequiresChallengeId'] as bool? ?? true,
+      localOnlyEndpoints: rawLocalOnly is List<Object?>
+          ? rawLocalOnly.whereType<String>().toList(growable: false)
+          : const [],
+      publicEndpoints: rawPublic is List<Object?>
+          ? rawPublic.whereType<String>().toList(growable: false)
+          : const [],
+    );
+  }
+}
+
+class PairingTokenStatus {
+  const PairingTokenStatus({
+    required this.fingerprint,
+    required this.deviceName,
+    required this.expiresAt,
+    required this.isCurrent,
+  });
+
+  final String fingerprint;
+  final String deviceName;
+  final DateTime expiresAt;
+  final bool isCurrent;
+
+  factory PairingTokenStatus.fromJson(Map<String, Object?> json) {
+    return PairingTokenStatus(
+      fingerprint: json['fingerprint'] as String? ?? '',
+      deviceName: json['deviceName'] as String? ?? 'mobile-device',
+      expiresAt:
+          DateTime.tryParse(json['expiresAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      isCurrent: json['isCurrent'] as bool? ?? false,
+    );
+  }
+}
+
 class BridgeNetworkEndpoint {
   const BridgeNetworkEndpoint({
     required this.host,
@@ -54,8 +106,7 @@ class BridgeNetworkEndpoint {
       url: json['url'] as String? ?? '',
       scope: json['scope'] as String? ?? 'unknown',
       requiresPairing: json['requiresPairing'] as bool? ?? true,
-      isRecommendedForMobile:
-          json['isRecommendedForMobile'] as bool? ?? false,
+      isRecommendedForMobile: json['isRecommendedForMobile'] as bool? ?? false,
     );
   }
 }

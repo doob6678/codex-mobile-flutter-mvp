@@ -7,10 +7,7 @@ void main() {
   runApp(
     CodexMobileApp(
       api: HttpCodexMobileApi(
-        const String.fromEnvironment(
-          'BRIDGE_URL',
-          defaultValue: '',
-        ),
+        const String.fromEnvironment('BRIDGE_URL', defaultValue: ''),
       ),
     ),
   );

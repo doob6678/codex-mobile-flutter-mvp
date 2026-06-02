@@ -1,28 +1,46 @@
 using CodexMobile.Bridge.Models;
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace CodexMobile.Bridge.Services;
 
 public sealed class SyncStateService
 {
+    private const int MaxEvents = 3000;
+    private static readonly Regex ApiKeyAssignment = new(@"OPENAI_API_KEY\s*=\s*\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SecretToken = new(@"sk-[A-Za-z0-9_\-]+", RegexOptions.Compiled);
     private readonly IClock clock;
+    private readonly LocalCodexHistoryService? localHistory;
     private readonly object gate = new();
     private readonly Dictionary<string, GoalRecord> goals = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CodexTaskRecord> tasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<MobileUserMessageRecord>> mobileUserMessages = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CodexSyncEvent> events = new();
     private readonly ConcurrentDictionary<Guid, Channel<CodexSyncSnapshot>> subscribers = new();
+    private bool historyGoalLoaded;
 
-    public SyncStateService(IClock clock)
+    public SyncStateService(IClock clock, LocalCodexHistoryService? localHistory = null)
     {
         this.clock = clock;
+        this.localHistory = localHistory;
     }
 
     public GoalRecord? CurrentGoal()
     {
+        EnsureHistoryGoalLoaded();
         lock (gate)
         {
             return goals.Values.OrderByDescending(goal => goal.UpdatedAt).FirstOrDefault();
+        }
+    }
+
+    public IReadOnlyList<GoalRecord> ListGoals()
+    {
+        EnsureHistoryGoalLoaded();
+        lock (gate)
+        {
+            return goals.Values.OrderByDescending(goal => goal.UpdatedAt).ToArray();
         }
     }
 
@@ -36,10 +54,12 @@ public sealed class SyncStateService
 
     public CodexSyncSnapshot GetSnapshot()
     {
+        EnsureHistoryGoalLoaded();
         lock (gate)
         {
             return new CodexSyncSnapshot(
                 CurrentGoalUnsafe(),
+                goals.Values.OrderByDescending(goal => goal.UpdatedAt).ToArray(),
                 tasks.Values.OrderByDescending(task => task.UpdatedAt).ToArray(),
                 events.ToArray(),
                 clock.Now);
@@ -158,6 +178,111 @@ public sealed class SyncStateService
         return updated;
     }
 
+    public MobileUserMessageRecord RecordMobileUserMessage(string threadId, string text, string? jobId = null)
+    {
+        if (string.IsNullOrWhiteSpace(threadId))
+        {
+            throw new ArgumentException("Thread id is required.", nameof(threadId));
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("Message text is required.", nameof(text));
+        }
+
+        var now = clock.Now;
+        var cleanedText = Redact(text.Trim());
+        var record = new MobileUserMessageRecord(
+            $"mobile_user_{Guid.NewGuid():N}",
+            threadId.Trim(),
+            "user",
+            cleanedText,
+            "mobile-bridge",
+            string.IsNullOrWhiteSpace(jobId) ? null : jobId.Trim(),
+            now);
+
+        lock (gate)
+        {
+            if (!mobileUserMessages.TryGetValue(record.ThreadId, out var threadMessages))
+            {
+                threadMessages = new List<MobileUserMessageRecord>();
+                mobileUserMessages[record.ThreadId] = threadMessages;
+            }
+
+            if (threadMessages.Any(existing =>
+                    string.Equals(existing.Role, record.Role, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(existing.Text.Trim(), record.Text.Trim(), StringComparison.Ordinal)))
+            {
+                return threadMessages.First(existing =>
+                    string.Equals(existing.Role, record.Role, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(existing.Text.Trim(), record.Text.Trim(), StringComparison.Ordinal));
+            }
+
+            threadMessages.Add(record);
+            events.Add(new CodexSyncEvent(
+                "codex.turn.mobile_user",
+                record.ThreadId,
+                now,
+                new Dictionary<string, object?>
+                {
+                    ["threadId"] = record.ThreadId,
+                    ["role"] = record.Role,
+                    ["text"] = record.Text,
+                    ["source"] = record.Source,
+                    ["jobId"] = record.JobId,
+                    ["message"] = "手机发送的 USER 消息已记录，等待 Windows Codex 处理",
+                }));
+            TrimEventsUnsafe();
+        }
+
+        PublishSnapshot();
+        return record;
+    }
+
+    public IReadOnlyList<MobileUserMessageRecord> ListMobileUserMessages(string threadId)
+    {
+        if (string.IsNullOrWhiteSpace(threadId))
+        {
+            return Array.Empty<MobileUserMessageRecord>();
+        }
+
+        lock (gate)
+        {
+            return mobileUserMessages.TryGetValue(threadId.Trim(), out var threadMessages)
+                ? threadMessages.OrderBy(message => message.CreatedAt).ToArray()
+                : Array.Empty<MobileUserMessageRecord>();
+        }
+    }
+
+    public CodexSyncEvent RecordEvent(
+        string type,
+        string entityId,
+        IReadOnlyDictionary<string, object?>? payload = null)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            throw new ArgumentException("Event type is required.", nameof(type));
+        }
+
+        var now = clock.Now;
+        var syncEvent = new CodexSyncEvent(
+            type.Trim(),
+            string.IsNullOrWhiteSpace(entityId) ? type.Trim() : entityId.Trim(),
+            now,
+            payload is null
+                ? new Dictionary<string, object?>()
+                : new Dictionary<string, object?>(payload, StringComparer.OrdinalIgnoreCase));
+
+        lock (gate)
+        {
+            events.Add(syncEvent);
+            TrimEventsUnsafe();
+        }
+
+        PublishSnapshot();
+        return syncEvent;
+    }
+
     public async IAsyncEnumerable<CodexSyncSnapshot> StreamSnapshots([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var channel = Channel.CreateUnbounded<CodexSyncSnapshot>(new UnboundedChannelOptions
@@ -200,6 +325,66 @@ public sealed class SyncStateService
     private GoalRecord? CurrentGoalUnsafe()
     {
         return goals.Values.OrderByDescending(goal => goal.UpdatedAt).FirstOrDefault();
+    }
+
+    private void EnsureHistoryGoalLoaded()
+    {
+        if (historyGoalLoaded || localHistory is null)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (historyGoalLoaded)
+            {
+                historyGoalLoaded = true;
+                return;
+            }
+        }
+
+        var recoveredGoals = localHistory.ReadGoals();
+        lock (gate)
+        {
+            historyGoalLoaded = true;
+            foreach (var recovered in recoveredGoals)
+            {
+                if (goals.ContainsKey(recovered.Id))
+                {
+                    continue;
+                }
+
+                goals[recovered.Id] = recovered;
+            events.Add(new CodexSyncEvent(
+                "goal.recovered",
+                    recovered.Id,
+                    recovered.UpdatedAt,
+                    new Dictionary<string, object?>
+                    {
+                        ["objective"] = recovered.Objective,
+                        ["status"] = recovered.Status.ToString(),
+                        ["source"] = recovered.Source,
+                    }));
+            }
+
+            TrimEventsUnsafe();
+        }
+    }
+
+    private void TrimEventsUnsafe()
+    {
+        if (events.Count <= MaxEvents)
+        {
+            return;
+        }
+
+        events.RemoveRange(0, events.Count - MaxEvents);
+    }
+
+    private static string Redact(string message)
+    {
+        var redacted = ApiKeyAssignment.Replace(message, "OPENAI_API_KEY=[REDACTED]");
+        return SecretToken.Replace(redacted, "[REDACTED]");
     }
 
     private void PublishSnapshot()

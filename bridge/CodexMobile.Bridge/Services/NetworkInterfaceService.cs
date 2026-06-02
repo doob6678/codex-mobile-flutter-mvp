@@ -8,19 +8,29 @@ namespace CodexMobile.Bridge.Services;
 public sealed class NetworkInterfaceService
 {
     private readonly Func<IReadOnlyList<IPAddress>> addressProvider;
+    private readonly Func<ExternalBridgeUrlsResult> externalBridgeUrlsProvider;
     private readonly bool allowPublicBridgeHosts;
 
     public NetworkInterfaceService()
-        : this(GetLocalIPv4Addresses, GetAllowPublicBridgeHosts())
+        : this(GetLocalIPv4Addresses, GetAllowPublicBridgeHosts(), ReadConfiguredExternalBridgeUrls)
     {
     }
 
     public NetworkInterfaceService(
         Func<IReadOnlyList<IPAddress>> addressProvider,
         bool allowPublicBridgeHosts)
+        : this(addressProvider, allowPublicBridgeHosts, ReadConfiguredExternalBridgeUrls)
+    {
+    }
+
+    public NetworkInterfaceService(
+        Func<IReadOnlyList<IPAddress>> addressProvider,
+        bool allowPublicBridgeHosts,
+        Func<ExternalBridgeUrlsResult> externalBridgeUrlsProvider)
     {
         this.addressProvider = addressProvider ?? throw new ArgumentNullException(nameof(addressProvider));
         this.allowPublicBridgeHosts = allowPublicBridgeHosts;
+        this.externalBridgeUrlsProvider = externalBridgeUrlsProvider ?? throw new ArgumentNullException(nameof(externalBridgeUrlsProvider));
     }
 
     public BridgeNetworkSummary ReadSummary(string scheme, int port)
@@ -28,6 +38,26 @@ public sealed class NetworkInterfaceService
         var endpoints = new List<BridgeNetworkEndpoint>();
         var warnings = new List<string>();
         var distinctHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var distinctUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var externalUrls = externalBridgeUrlsProvider();
+        warnings.AddRange(externalUrls.Warnings);
+        foreach (var url in externalUrls.Urls)
+        {
+            if (!distinctUrls.Add(url))
+            {
+                continue;
+            }
+
+            var uri = new Uri(url, UriKind.Absolute);
+            distinctHosts.Add(uri.Host);
+            endpoints.Add(new BridgeNetworkEndpoint(
+                uri.Host,
+                url,
+                "external",
+                true,
+                true));
+        }
 
         foreach (var address in addressProvider().Where(address => address.AddressFamily == AddressFamily.InterNetwork))
         {
@@ -44,9 +74,15 @@ public sealed class NetworkInterfaceService
                 continue;
             }
 
+            var url = BuildUrl(scheme, host, port);
+            if (!distinctUrls.Add(url))
+            {
+                continue;
+            }
+
             endpoints.Add(new BridgeNetworkEndpoint(
                 host,
-                BuildUrl(scheme, host, port),
+                url,
                 scope,
                 true,
                 scope != "public"));
@@ -54,12 +90,16 @@ public sealed class NetworkInterfaceService
 
         if (!endpoints.Any(endpoint => endpoint.Scope == "loopback"))
         {
-            endpoints.Insert(0, new BridgeNetworkEndpoint(
+            var loopbackUrl = BuildUrl(scheme, "127.0.0.1", port);
+            if (distinctUrls.Add(loopbackUrl))
+            {
+                endpoints.Insert(0, new BridgeNetworkEndpoint(
                 "127.0.0.1",
-                BuildUrl(scheme, "127.0.0.1", port),
+                loopbackUrl,
                 "loopback",
                 true,
                 false));
+            }
         }
 
         return new BridgeNetworkSummary(
@@ -68,6 +108,98 @@ public sealed class NetworkInterfaceService
             allowPublicBridgeHosts,
             endpoints,
             warnings);
+    }
+
+    public static ExternalBridgeUrlsResult ReadConfiguredExternalBridgeUrls()
+    {
+        var rawValues = new List<string>();
+        var warnings = new List<string>();
+
+        AddDelimitedEnvironment(rawValues, "CODEX_MOBILE_EXTERNAL_BRIDGE_URLS");
+        AddDelimitedEnvironment(rawValues, "CODEX_MOBILE_PUBLIC_BRIDGE_URLS");
+
+        var configuredFile = Environment.GetEnvironmentVariable("CODEX_MOBILE_EXTERNAL_BRIDGE_URLS_FILE");
+        var candidateFiles = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredFile))
+        {
+            candidateFiles.Add(configuredFile);
+        }
+
+        candidateFiles.Add(Path.Combine(AppContext.BaseDirectory, "bridge-external-urls.txt"));
+
+        foreach (var file in candidateFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (!File.Exists(file))
+                {
+                    continue;
+                }
+
+                foreach (var line in File.ReadAllLines(file))
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    rawValues.Add(trimmed);
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Could not read external bridge URL file {file}: {ex.Message}");
+            }
+        }
+
+        var urls = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawValue in rawValues)
+        {
+            if (!TryNormalizeExternalUrl(rawValue, out var normalized))
+            {
+                warnings.Add($"Ignored invalid external bridge URL: {rawValue}");
+                continue;
+            }
+
+            if (seen.Add(normalized))
+            {
+                urls.Add(normalized);
+            }
+        }
+
+        return new ExternalBridgeUrlsResult(urls, warnings);
+    }
+
+    private static void AddDelimitedEnvironment(List<string> values, string name)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return;
+        }
+
+        values.AddRange(raw.Split(
+            [',', ';', '\r', '\n'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static bool TryNormalizeExternalUrl(string rawUrl, out string normalized)
+    {
+        normalized = string.Empty;
+        if (!Uri.TryCreate(rawUrl.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (uri.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(uri.Host))
+        {
+            return false;
+        }
+
+        normalized = uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        return true;
     }
 
     public static IReadOnlyList<IPAddress> GetLocalIPv4Addresses()
@@ -172,3 +304,7 @@ public sealed class NetworkInterfaceService
             || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+public sealed record ExternalBridgeUrlsResult(
+    IReadOnlyList<string> Urls,
+    IReadOnlyList<string> Warnings);

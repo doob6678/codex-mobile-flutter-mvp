@@ -59,43 +59,43 @@ class _AppShellState extends State<AppShell> {
   List<_Destination> _destinations() {
     return const [
       _Destination(
-        icon: Icon(Icons.link),
-        selectedIcon: Icon(Icons.link_rounded),
+        icon: Icons.link_outlined,
+        selectedIcon: Icons.link_rounded,
         label: '配对',
       ),
       _Destination(
-        icon: Icon(Icons.dashboard_outlined),
-        selectedIcon: Icon(Icons.dashboard),
+        icon: Icons.dashboard_outlined,
+        selectedIcon: Icons.dashboard,
         label: '概览',
       ),
       _Destination(
-        icon: Icon(Icons.folder_outlined),
-        selectedIcon: Icon(Icons.folder),
+        icon: Icons.folder_outlined,
+        selectedIcon: Icons.folder,
         label: '项目',
       ),
       _Destination(
-        icon: Icon(Icons.description_outlined),
-        selectedIcon: Icon(Icons.description),
+        icon: Icons.account_tree_outlined,
+        selectedIcon: Icons.account_tree,
         label: '文件',
       ),
       _Destination(
-        icon: Icon(Icons.chat_bubble_outline),
-        selectedIcon: Icon(Icons.chat_bubble),
+        icon: Icons.chat_bubble_outline,
+        selectedIcon: Icons.chat_bubble,
         label: '对话',
       ),
       _Destination(
-        icon: Icon(Icons.verified_user_outlined),
-        selectedIcon: Icon(Icons.verified_user),
+        icon: Icons.verified_user_outlined,
+        selectedIcon: Icons.verified_user,
         label: '审批',
       ),
       _Destination(
-        icon: Icon(Icons.track_changes_outlined),
-        selectedIcon: Icon(Icons.track_changes),
+        icon: Icons.track_changes_outlined,
+        selectedIcon: Icons.track_changes,
         label: '目标',
       ),
       _Destination(
-        icon: Icon(Icons.settings_outlined),
-        selectedIcon: Icon(Icons.settings),
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
         label: '设置',
       ),
     ];
@@ -109,8 +109,8 @@ class _Destination {
     required this.label,
   });
 
-  final Icon icon;
-  final Icon selectedIcon;
+  final IconData icon;
+  final IconData selectedIcon;
   final String label;
 }
 
@@ -163,14 +163,11 @@ class _AppDrawer extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    leading: IconTheme(
-                      data: IconThemeData(
-                        color: selected
-                            ? const Color(0xFF111827)
-                            : const Color(0xFF6B7280),
-                      ),
-                      child:
-                          selected ? destination.selectedIcon : destination.icon,
+                    leading: Icon(
+                      selected ? destination.selectedIcon : destination.icon,
+                      color: selected
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF6B7280),
                     ),
                     title: Text(
                       destination.label,
@@ -180,8 +177,9 @@ class _AppDrawer extends StatelessWidget {
                         color: selected
                             ? const Color(0xFF111827)
                             : const Color(0xFF4B5563),
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                     ),
                     onTap: () => onSelected(index),

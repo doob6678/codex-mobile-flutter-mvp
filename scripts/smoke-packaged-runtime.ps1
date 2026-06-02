@@ -29,6 +29,8 @@ else {
 }
 
 $env:ASPNETCORE_URLS = "http://127.0.0.1:$Port"
+$env:CODEX_MOBILE_NO_BROWSER = "1"
+$env:CODEX_MOBILE_EXTERNAL_BRIDGE_URLS = "https://codex-mobile-smoke.example"
 if ([string]::IsNullOrWhiteSpace($KnowledgeBasePath)) {
     $desktop = Join-Path $env:USERPROFILE "Desktop"
     $KnowledgeBasePath = Get-ChildItem `
@@ -78,20 +80,62 @@ try {
         throw "Bridge did not start on $baseUri"
     }
 
+    $connectPage = Invoke-WebRequest -Uri "$baseUri/connect" -TimeoutSec 5
+    $connectQrHasBridgeUrls = $connectPage.Content -match 'bridgeUrls'
+    if (-not $connectQrHasBridgeUrls) {
+        throw "Connect page QR payload does not include bridgeUrls."
+    }
+    $connectQrHasExternalUrl = $connectPage.Content -match 'https://codex-mobile-smoke.example'
+    if (-not $connectQrHasExternalUrl) {
+        throw "Connect page QR payload does not prefer configured external bridge URL."
+    }
+
     $pair = Invoke-RestMethod -Method Post -Uri "$baseUri/pairing/start" -TimeoutSec 5
+    $pairingBody = @{ code = $pair.code }
+    if ($pair.PSObject.Properties.Name -contains "challengeId") {
+        $pairingBody.challengeId = $pair.challengeId
+    }
+    elseif ($pair.PSObject.Properties.Name -contains "id") {
+        $pairingBody.challengeId = $pair.id
+    }
+
     $token = Invoke-RestMethod `
         -Method Post `
         -Uri "$baseUri/pairing/complete" `
         -ContentType "application/json" `
-        -Body (@{ code = $pair.code } | ConvertTo-Json -Compress) `
+        -Body ($pairingBody | ConvertTo-Json -Compress) `
         -TimeoutSec 5
 
     $headers = @{ Authorization = "Bearer $($token.accessToken)" }
+    $unauthorizedTokenInventory = $false
+    try {
+        Invoke-WebRequest -Uri "$baseUri/pairing/tokens" -TimeoutSec 5 | Out-Null
+    }
+    catch {
+        $statusCode = $_.Exception.Response.StatusCode.value__
+        $unauthorizedTokenInventory = $statusCode -eq 401
+    }
+    if (-not $unauthorizedTokenInventory) {
+        throw "Pairing token inventory was reachable without bearer auth."
+    }
+
+    $tokenInventory = Invoke-RestMethod -Uri "$baseUri/pairing/tokens" -Headers $headers -TimeoutSec 5
+    $tokenInventoryJson = $tokenInventory | ConvertTo-Json -Depth 8 -Compress
+    $tokenInventoryHidesRawToken = $tokenInventoryJson -notmatch [regex]::Escape($token.accessToken)
+    if (-not $tokenInventoryHidesRawToken) {
+        throw "Pairing token inventory exposed the raw access token."
+    }
+
     $threads = Invoke-RestMethod -Uri "$baseUri/codex/threads" -Headers $headers -TimeoutSec 20
     $firstThreadId = $threads.json.data[0].id
     $threadDetail = Invoke-RestMethod -Uri "$baseUri/codex/threads/$firstThreadId" -Headers $headers -TimeoutSec 20
     $projects = Invoke-RestMethod -Uri "$baseUri/projects" -Headers $headers -TimeoutSec 5
     $network = Invoke-RestMethod -Uri "$baseUri/network/interfaces" -Headers $headers -TimeoutSec 5
+    $networkEndpointCount = ($network.endpoints | Measure-Object).Count
+    $networkNonLoopbackCount = ($network.endpoints | Where-Object { $_.scope -ne "loopback" } | Measure-Object).Count
+    if ($networkEndpointCount -lt 1) {
+        throw "Bridge did not report any network endpoints."
+    }
 
     Invoke-RestMethod `
         -Method Post `
@@ -126,7 +170,13 @@ try {
         HasKbProject = [bool]$kbProject
         MarkdownRead = $markdownRead
         MarkdownLength = $markdownLength
-        NetworkInterfaceCount = ($network.interfaces | Measure-Object).Count
+        ConnectQrHasBridgeUrls = $connectQrHasBridgeUrls
+        ConnectQrHasExternalUrl = $connectQrHasExternalUrl
+        NetworkEndpointCount = $networkEndpointCount
+        NetworkNonLoopbackCount = $networkNonLoopbackCount
+        TokenInventoryRequiresAuth = $unauthorizedTokenInventory
+        TokenInventoryHidesRawToken = $tokenInventoryHidesRawToken
+        TokenInventoryCount = ($tokenInventory.tokens | Measure-Object).Count
         GoalSynced = $sync.goal.objective -eq "packaged runtime smoke"
     } | ConvertTo-Json -Compress
 }

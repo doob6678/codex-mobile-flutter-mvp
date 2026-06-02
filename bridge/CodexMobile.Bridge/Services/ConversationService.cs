@@ -23,6 +23,7 @@ public sealed class ConversationService
             string.IsNullOrWhiteSpace(title) ? "New task" : title.Trim(),
             projectId,
             workingDirectory,
+            null,
             now,
             now);
 
@@ -39,6 +40,30 @@ public sealed class ConversationService
         lock (gate)
         {
             return conversations.Values.OrderByDescending(conversation => conversation.UpdatedAt).ToArray();
+        }
+    }
+
+    public ConversationRecord BindCodexThread(string conversationId, string codexThreadId)
+    {
+        if (string.IsNullOrWhiteSpace(codexThreadId))
+        {
+            throw new ArgumentException("Codex thread id is required.", nameof(codexThreadId));
+        }
+
+        lock (gate)
+        {
+            if (!conversations.TryGetValue(conversationId, out var conversation))
+            {
+                throw new KeyNotFoundException($"Conversation '{conversationId}' was not found.");
+            }
+
+            var updated = conversation with
+            {
+                CodexThreadId = codexThreadId.Trim(),
+                UpdatedAt = clock.Now,
+            };
+            conversations[conversationId] = updated;
+            return updated;
         }
     }
 

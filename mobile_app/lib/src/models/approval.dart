@@ -23,7 +23,10 @@ class ApprovalRequest {
     final rawActions = json['actions'];
     return ApprovalRequest(
       id: json['id'] as String? ?? '',
-      projectId: json['projectId'] as String? ?? json['conversationId'] as String? ?? '',
+      projectId:
+          json['projectId'] as String? ??
+          json['conversationId'] as String? ??
+          '',
       title:
           json['title'] as String? ??
           json['summary'] as String? ??

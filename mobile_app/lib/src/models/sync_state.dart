@@ -9,6 +9,7 @@ class GoalRecord {
     required this.status,
     required this.source,
     required this.updatedAt,
+    this.threadId,
   });
 
   final String id;
@@ -16,6 +17,7 @@ class GoalRecord {
   final GoalStatus status;
   final String source;
   final DateTime updatedAt;
+  final String? threadId;
 
   factory GoalRecord.fromJson(Map<String, Object?> json) {
     return GoalRecord(
@@ -23,6 +25,7 @@ class GoalRecord {
       objective: json['objective'] as String? ?? '',
       status: _goalStatus(json['status'] as String?),
       source: json['source'] as String? ?? 'bridge',
+      threadId: _readNullableString(json['threadId']),
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
@@ -73,26 +76,80 @@ class CodexSyncSnapshot {
   const CodexSyncSnapshot({
     required this.tasks,
     required this.updatedAt,
+    this.events = const [],
+    this.goals = const [],
     this.goal,
   });
 
   final GoalRecord? goal;
+  final List<GoalRecord> goals;
   final List<CodexTaskRecord> tasks;
+  final List<CodexSyncEvent> events;
   final DateTime updatedAt;
 
   factory CodexSyncSnapshot.fromJson(Map<String, Object?> json) {
     final rawGoal = json['goal'];
+    final rawGoals = json['goals'];
     final rawTasks = json['tasks'];
+    final rawEvents = json['events'];
+    final goals = rawGoals is List<Object?>
+        ? rawGoals
+              .whereType<Map<String, Object?>>()
+              .map(GoalRecord.fromJson)
+              .toList(growable: false)
+        : const <GoalRecord>[];
+    final primaryGoal = rawGoal is Map<String, Object?>
+        ? GoalRecord.fromJson(rawGoal)
+        : goals.isNotEmpty
+        ? goals.first
+        : null;
     return CodexSyncSnapshot(
-      goal: rawGoal is Map<String, Object?> ? GoalRecord.fromJson(rawGoal) : null,
+      goal: primaryGoal,
+      goals: goals,
       tasks: rawTasks is List<Object?>
           ? rawTasks
                 .whereType<Map<String, Object?>>()
                 .map(CodexTaskRecord.fromJson)
                 .toList(growable: false)
           : const [],
+      events: rawEvents is List<Object?>
+          ? rawEvents
+                .whereType<Map<String, Object?>>()
+                .map(CodexSyncEvent.fromJson)
+                .toList(growable: false)
+          : const [],
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  }
+}
+
+class CodexSyncEvent {
+  const CodexSyncEvent({
+    required this.type,
+    required this.entityId,
+    required this.timestamp,
+    this.payload = const {},
+  });
+
+  final String type;
+  final String entityId;
+  final DateTime timestamp;
+  final Map<String, Object?> payload;
+
+  String get message => (payload['message'] ?? '').toString();
+
+  factory CodexSyncEvent.fromJson(Map<String, Object?> json) {
+    final rawPayload = json['payload'];
+    return CodexSyncEvent(
+      type: json['type'] as String? ?? '',
+      entityId: json['entityId'] as String? ?? '',
+      payload: rawPayload is Map<String, Object?>
+          ? Map<String, Object?>.from(rawPayload)
+          : const {},
+      timestamp:
+          DateTime.tryParse(json['timestamp'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
@@ -114,4 +171,12 @@ CodexTaskStatus _taskStatus(String? value) {
     'failed' => CodexTaskStatus.failed,
     _ => CodexTaskStatus.pending,
   };
+}
+
+String? _readNullableString(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
 }

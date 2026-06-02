@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CodexMobile.Bridge.Models;
 
 namespace CodexMobile.Bridge.Services;
 
@@ -25,6 +26,27 @@ public sealed class LocalCodexHistoryService
 
     private string SessionIndexPath => Path.Combine(codexHome, "session_index.jsonl");
 
+    public GoalRecord? ReadLatestGoal(int maxThreads = 80)
+    {
+        return ReadGoals(maxThreads).FirstOrDefault();
+    }
+
+    public IReadOnlyList<GoalRecord> ReadGoals(int maxThreads = 80)
+    {
+        return ReadSessionIndex()
+            .OrderByDescending(thread => thread.UpdatedAt)
+            .Take(maxThreads)
+            .Select(thread =>
+            {
+                var metadata = TryReadSessionMetadata(thread.Id);
+                return ReadLatestGoalFromRollout(metadata.RolloutPath, thread.Id);
+            })
+            .Where(goal => goal is not null)
+            .Select(goal => goal!)
+            .OrderByDescending(goal => goal!.UpdatedAt)
+            .ToArray();
+    }
+
     public JsonElement ListThreads(int limit = 200)
     {
         var threads = ReadSessionIndex()
@@ -33,6 +55,11 @@ public sealed class LocalCodexHistoryService
             .Select(thread =>
             {
                 var metadata = TryReadSessionMetadata(thread.Id);
+                if (string.Equals(metadata.ThreadSource, "subagent", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
                 return new Dictionary<string, object?>
                 {
                     ["id"] = thread.Id,
@@ -48,14 +75,16 @@ public sealed class LocalCodexHistoryService
                     ["cwd"] = metadata.Cwd,
                     ["cliVersion"] = metadata.CliVersion,
                     ["source"] = metadata.Source,
-                    ["threadSource"] = null,
-                    ["agentNickname"] = null,
-                    ["agentRole"] = null,
+                    ["threadSource"] = metadata.ThreadSource,
+                    ["agentNickname"] = metadata.AgentNickname,
+                    ["agentRole"] = metadata.AgentRole,
                     ["gitInfo"] = null,
                     ["name"] = Redact(thread.Name),
                     ["turns"] = Array.Empty<object>(),
                 };
             })
+            .Where(thread => thread is not null)
+            .Select(thread => thread!)
             .ToArray();
 
         return JsonSerializer.SerializeToElement(new
@@ -89,9 +118,9 @@ public sealed class LocalCodexHistoryService
             ["cwd"] = metadata.Cwd,
             ["cliVersion"] = metadata.CliVersion,
             ["source"] = metadata.Source,
-            ["threadSource"] = null,
-            ["agentNickname"] = null,
-            ["agentRole"] = null,
+            ["threadSource"] = metadata.ThreadSource,
+            ["agentNickname"] = metadata.AgentNickname,
+            ["agentRole"] = metadata.AgentRole,
             ["gitInfo"] = null,
             ["name"] = Redact(name),
             ["turns"] = new[]
@@ -185,7 +214,10 @@ public sealed class LocalCodexHistoryService
                     ReadDate(payload, "timestamp"),
                     File.GetLastWriteTimeUtc(rolloutPath),
                     rolloutPath,
-                    rolloutPath.Contains($"{Path.DirectorySeparatorChar}archived_sessions{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+                    rolloutPath.Contains($"{Path.DirectorySeparatorChar}archived_sessions{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase),
+                    ReadString(payload, "thread_source"),
+                    ReadString(payload, "agent_nickname"),
+                    ReadString(payload, "agent_role"));
             }
             catch (JsonException)
             {
@@ -203,21 +235,29 @@ public sealed class LocalCodexHistoryService
             return Array.Empty<Dictionary<string, object?>>();
         }
 
-        var items = new List<Dictionary<string, object?>>();
+        var items = new Queue<Dictionary<string, object?>>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var index = 0;
         foreach (var line in ReadSharedLines(rolloutPath))
         {
-            if (items.Count >= maxItems)
-            {
-                break;
-            }
-
             try
             {
                 using var document = JsonDocument.Parse(line);
-                var item = TryMapLineToThreadItem(document.RootElement, items.Count);
+                var item = TryMapLineToThreadItem(document.RootElement, index);
                 if (item is not null)
                 {
-                    items.Add(item);
+                    if (!seen.Add(MessageKey(item)))
+                    {
+                        continue;
+                    }
+
+                    items.Enqueue(item);
+                    if (items.Count > maxItems)
+                    {
+                        items.Dequeue();
+                    }
+
+                    index += 1;
                 }
             }
             catch (JsonException)
@@ -226,7 +266,92 @@ public sealed class LocalCodexHistoryService
             }
         }
 
-        return items;
+        return items.ToArray();
+    }
+
+    private static string MessageKey(IReadOnlyDictionary<string, object?> item)
+    {
+        var type = item.TryGetValue("type", out var rawType) ? rawType?.ToString() ?? "" : "";
+        var role = type switch
+        {
+            "userMessage" => "user",
+            "agentMessage" => "assistant",
+            _ => type,
+        };
+
+        var text = "";
+        if (type == "userMessage"
+            && item.TryGetValue("content", out var content)
+            && content is IEnumerable<Dictionary<string, object?>> parts)
+        {
+            text = string.Join("\n", parts.Select(part => part.TryGetValue("text", out var rawText) ? rawText?.ToString() : ""));
+        }
+        else if (type == "agentMessage" && item.TryGetValue("text", out var rawAgentText))
+        {
+            text = rawAgentText?.ToString() ?? "";
+        }
+        else if (item.TryGetValue("command", out var command))
+        {
+            text = command?.ToString() ?? "";
+        }
+
+        return $"{role.Trim().ToLowerInvariant()}\n{text.Trim()}";
+    }
+
+    private static GoalRecord? ReadLatestGoalFromRollout(string? rolloutPath, string threadId)
+    {
+        if (string.IsNullOrWhiteSpace(rolloutPath) || !File.Exists(rolloutPath))
+        {
+            return null;
+        }
+
+        GoalRecord? latest = null;
+        foreach (var line in ReadSharedLines(rolloutPath))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var root = document.RootElement;
+                if (!root.TryGetProperty("type", out var type) || type.GetString() != "event_msg")
+                {
+                    continue;
+                }
+
+                if (!root.TryGetProperty("payload", out var payload)
+                    || ReadString(payload, "type") != "thread_goal_updated"
+                    || !payload.TryGetProperty("goal", out var goal))
+                {
+                    continue;
+                }
+
+                var objective = ReadString(goal, "objective").Trim();
+                if (string.IsNullOrWhiteSpace(objective))
+                {
+                    continue;
+                }
+
+                var updatedAt = ReadDate(goal, "updatedAt");
+                if (updatedAt == DateTimeOffset.UnixEpoch)
+                {
+                    updatedAt = ReadDate(root, "timestamp");
+                }
+
+                latest = new GoalRecord(
+                    $"windows_goal_{SanitizeId(ReadString(goal, "threadId", threadId))}",
+                    Redact(objective),
+                    ReadGoalStatus(ReadString(goal, "status")),
+                    "windows-codex-history",
+                    ReadDate(goal, "createdAt"),
+                    updatedAt,
+                    null);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+        }
+
+        return latest;
     }
 
     private Dictionary<string, object?>? TryMapLineToThreadItem(JsonElement root, int index)
@@ -253,7 +378,17 @@ public sealed class LocalCodexHistoryService
             {
                 var role = ReadString(response, "role");
                 var text = ReadResponseText(response);
-                return role == "user" ? UserMessage(index, text) : AgentMessage(index, text);
+                if (LooksLikeInstructionBlock(text))
+                {
+                    return null;
+                }
+
+                return role switch
+                {
+                    "user" => UserMessage(index, text),
+                    "assistant" => AgentMessage(index, text),
+                    _ => null,
+                };
             }
 
             if (responseType == "function_call")
@@ -380,16 +515,57 @@ public sealed class LocalCodexHistoryService
 
     private static DateTimeOffset ReadDate(JsonElement element, string property)
     {
-        var value = ReadString(element, property);
+        if (!element.TryGetProperty(property, out var raw) || raw.ValueKind == JsonValueKind.Null)
+        {
+            return DateTimeOffset.UnixEpoch;
+        }
+
+        if (raw.ValueKind == JsonValueKind.Number && raw.TryGetInt64(out var seconds))
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(seconds);
+        }
+
+        var value = raw.ToString();
         return DateTimeOffset.TryParse(value, out var parsed)
             ? parsed
             : DateTimeOffset.UnixEpoch;
+    }
+
+    private static GoalStatus ReadGoalStatus(string value)
+    {
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "completed" or "complete" => GoalStatus.Completed,
+            "paused" or "pause" => GoalStatus.Paused,
+            _ => GoalStatus.Active,
+        };
+    }
+
+    private static string SanitizeId(string value)
+    {
+        var cleaned = Regex.Replace(value, "[^A-Za-z0-9_-]", "_");
+        return string.IsNullOrWhiteSpace(cleaned) ? "latest" : cleaned;
     }
 
     private static string Redact(string message)
     {
         var redacted = ApiKeyAssignment.Replace(message, "OPENAI_API_KEY=[REDACTED]");
         return SecretToken.Replace(redacted, "[REDACTED]");
+    }
+
+    private static bool LooksLikeInstructionBlock(string text)
+    {
+        var normalized = text.TrimStart().ToLowerInvariant();
+        return normalized.StartsWith("<permissions instructions>", StringComparison.Ordinal)
+            || normalized.StartsWith("<app-context>", StringComparison.Ordinal)
+            || normalized.StartsWith("<skills_instructions>", StringComparison.Ordinal)
+            || normalized.StartsWith("<plugins_instructions>", StringComparison.Ordinal)
+            || normalized.StartsWith("<collaboration_mode>", StringComparison.Ordinal)
+            || normalized.StartsWith("<environment_context>", StringComparison.Ordinal)
+            || normalized.StartsWith("# available skills", StringComparison.Ordinal)
+            || normalized.Contains("filesystem sandboxing defines which files can be read or written", StringComparison.Ordinal)
+            || normalized.Contains("you are running inside the codex (desktop) app", StringComparison.Ordinal)
+            || normalized.Contains("### available skills", StringComparison.Ordinal);
     }
 
     private sealed record IndexedThread(string Id, string Name, DateTimeOffset UpdatedAt);
@@ -403,7 +579,10 @@ public sealed class LocalCodexHistoryService
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt,
         string? RolloutPath,
-        bool Archived)
+        bool Archived,
+        string ThreadSource,
+        string AgentNickname,
+        string AgentRole)
     {
         public static SessionMetadata Empty(string threadId)
         {
@@ -416,7 +595,10 @@ public sealed class LocalCodexHistoryService
                 DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch,
                 null,
-                false);
+                false,
+                "",
+                "",
+                "");
         }
     }
 }

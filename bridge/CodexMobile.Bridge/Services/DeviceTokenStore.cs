@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using CodexMobile.Bridge.Models;
 
 namespace CodexMobile.Bridge.Services;
@@ -48,6 +49,24 @@ public sealed class DeviceTokenStore
         }
     }
 
+    public IReadOnlyList<PairingTokenStatus> ListActive(string? currentAccessToken)
+    {
+        lock (gate)
+        {
+            return tokens
+                .Where(entry => !revoked.Contains(entry.Key) && entry.Value.ExpiresAt > clock.Now)
+                .OrderByDescending(entry => entry.Value.ExpiresAt)
+                .Select(entry => new PairingTokenStatus(
+                    Fingerprint(entry.Key),
+                    entry.Value.DeviceName,
+                    entry.Value.ExpiresAt,
+                    CryptographicOperations.FixedTimeEquals(
+                        Encoding.UTF8.GetBytes(entry.Key),
+                        Encoding.UTF8.GetBytes(currentAccessToken ?? string.Empty))))
+                .ToArray();
+        }
+    }
+
     public void Revoke(string accessToken)
     {
         lock (gate)
@@ -55,5 +74,33 @@ public sealed class DeviceTokenStore
             revoked.Add(accessToken);
             tokens.Remove(accessToken);
         }
+    }
+
+    public bool RevokeByFingerprint(string fingerprint)
+    {
+        if (string.IsNullOrWhiteSpace(fingerprint))
+        {
+            return false;
+        }
+
+        lock (gate)
+        {
+            var match = tokens.Keys.FirstOrDefault(token =>
+                string.Equals(Fingerprint(token), fingerprint.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                return false;
+            }
+
+            revoked.Add(match);
+            tokens.Remove(match);
+            return true;
+        }
+    }
+
+    private static string Fingerprint(string accessToken)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(accessToken));
+        return Convert.ToHexString(hash)[..12].ToLowerInvariant();
     }
 }

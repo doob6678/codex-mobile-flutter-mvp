@@ -28,11 +28,14 @@ public sealed class ConnectPageService
         var challenge = pairing.Start(pairingTtl);
         var summary = network.ReadSummary(scheme, port);
         var preferred = SelectPreferredEndpoint(summary);
+        var bridgeUrls = SelectMobileBridgeUrls(summary, preferred);
         var payload = new Dictionary<string, object?>
         {
             ["type"] = "codex-mobile-bridge",
             ["version"] = 1,
+            ["challengeId"] = challenge.Id,
             ["bridgeUrl"] = preferred.Url,
+            ["bridgeUrls"] = bridgeUrls,
             ["pairingCode"] = challenge.Code,
             ["expiresAt"] = challenge.ExpiresAt,
         };
@@ -48,10 +51,35 @@ public sealed class ConnectPageService
             challenge.ExpiresAt);
     }
 
+    public static IReadOnlyList<string> SelectMobileBridgeUrls(
+        BridgeNetworkSummary summary,
+        BridgeNetworkEndpoint preferred)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var urls = new List<string>();
+
+        void Add(string url)
+        {
+            if (!string.IsNullOrWhiteSpace(url) && seen.Add(url))
+            {
+                urls.Add(url);
+            }
+        }
+
+        Add(preferred.Url);
+        foreach (var endpoint in summary.Endpoints.Where(endpoint => endpoint.Scope != "loopback"))
+        {
+            Add(endpoint.Url);
+        }
+
+        return urls;
+    }
+
     public static BridgeNetworkEndpoint SelectPreferredEndpoint(BridgeNetworkSummary summary)
     {
         var endpoints = summary.Endpoints;
-        return endpoints.FirstOrDefault(endpoint => endpoint.Scope == "private-lan")
+        return endpoints.FirstOrDefault(endpoint => endpoint.Scope == "external")
+            ?? endpoints.FirstOrDefault(endpoint => endpoint.Scope == "private-lan")
             ?? endpoints.FirstOrDefault(endpoint => endpoint.Scope == "mesh-vpn")
             ?? endpoints.FirstOrDefault(endpoint => endpoint.Scope == "link-local")
             ?? endpoints.FirstOrDefault(endpoint => endpoint.Scope == "public")
@@ -135,7 +163,10 @@ public sealed class ConnectPageService
                       <div class="code">{{HtmlEncoder.Default.Encode(challenge.Code)}}</div>
                       <p>推荐地址：<code>{{HtmlEncoder.Default.Encode(preferred.Url)}}</code></p>
                       <p>过期时间：{{HtmlEncoder.Default.Encode(challenge.ExpiresAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss"))}}</p>
-                      <textarea readonly>{{WebUtility.HtmlEncode(payloadJson)}}</textarea>
+                      <details>
+                        <summary>连接密钥 JSON</summary>
+                        <textarea readonly>{{WebUtility.HtmlEncode(payloadJson)}}</textarea>
+                      </details>
                       <h2>可用地址</h2>
                       <ul>{{endpoints}}</ul>
                       {{warnings}}

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../models/approval.dart';
 import '../models/bridge_network.dart';
+import '../models/codex_backend.dart';
 import '../models/codex_file.dart';
 import '../models/codex_thread.dart';
 import '../models/conversation.dart';
@@ -13,6 +14,8 @@ import 'bridge_endpoint.dart';
 abstract interface class CodexMobileApi {
   Future<BridgeStatus> getStatus();
 
+  Future<CodexBackendStatus> getCodexStatus();
+
   void setBridgeUrl(String bridgeUrl);
 
   void setAccessToken(String? token);
@@ -22,6 +25,7 @@ abstract interface class CodexMobileApi {
   Future<PairingResult> completePairing({
     required String bridgeUrl,
     required String pairingCode,
+    String? challengeId,
   });
 
   Future<List<ProjectSummary>> listProjects();
@@ -36,18 +40,36 @@ abstract interface class CodexMobileApi {
     required String path,
   });
 
+  Future<DownloadedFile> downloadFile({
+    required String projectId,
+    required String path,
+  });
+
   Future<List<ConversationSummary>> listConversations();
+
+  Future<ConversationDetail> readConversation({required String conversationId});
+
+  Future<ConversationDetail> sendConversationMessage({
+    required String conversationId,
+    required String content,
+  });
 
   Future<List<CodexThreadGroup>> listCodexThreadGroups();
 
   Future<CodexThreadDetail> readCodexThread({required String threadId});
 
-  Future<void> startCodexTurn({
+  Future<CodexThreadDetail> startCodexTurn({
     required String threadId,
     required String prompt,
   });
 
   Future<List<ApprovalRequest>> listApprovals();
+
+  Future<BridgeSecurityStatus> getSecurityStatus();
+
+  Future<List<PairingTokenStatus>> listPairingTokens();
+
+  Future<void> revokePairingToken({required String fingerprint});
 
   Future<BridgeNetworkSummary> getNetworkSummary();
 
@@ -104,13 +126,19 @@ class PairingResult {
 }
 
 class PairingChallenge {
-  const PairingChallenge({required this.code, required this.expiresAt});
+  const PairingChallenge({
+    required this.id,
+    required this.code,
+    required this.expiresAt,
+  });
 
+  final String id;
   final String code;
   final DateTime expiresAt;
 
   factory PairingChallenge.fromJson(Map<String, Object?> json) {
     return PairingChallenge(
+      id: json['challengeId'] as String? ?? json['id'] as String? ?? '',
       code: json['code'] as String? ?? '',
       expiresAt:
           DateTime.tryParse(json['expiresAt'] as String? ?? '') ??
@@ -124,13 +152,28 @@ class HttpCodexMobileApi implements CodexMobileApi {
     : _endpoint = _createEndpoint(bridgeUrl),
       _client = client ?? HttpClient();
 
+  static const int _turnReplyPollAttempts = 90;
+  static const Duration _turnReplyPollDelay = Duration(seconds: 2);
+
   BridgeEndpoint? _endpoint;
   final HttpClient _client;
   String? _accessToken;
+  List<ConversationSummary>? _conversationCache;
+  final Map<String, ConversationDetail> _conversationDetailCache = {};
+  List<CodexThreadGroup>? _threadGroupCache;
+  final Map<String, CodexThreadDetail> _threadDetailCache = {};
+  CodexBackendStatus? _codexStatusCache;
+  CodexSyncSnapshot? _syncStateCache;
 
   @override
   void setBridgeUrl(String bridgeUrl) {
     _endpoint = _createEndpoint(bridgeUrl);
+    _conversationCache = null;
+    _conversationDetailCache.clear();
+    _threadGroupCache = null;
+    _threadDetailCache.clear();
+    _codexStatusCache = null;
+    _syncStateCache = null;
   }
 
   @override
@@ -145,6 +188,22 @@ class HttpCodexMobileApi implements CodexMobileApi {
   }
 
   @override
+  Future<CodexBackendStatus> getCodexStatus() async {
+    try {
+      final json = await _getObject('/codex/status');
+      final status = CodexBackendStatus.fromJson(json);
+      _codexStatusCache = status;
+      return status;
+    } catch (_) {
+      final cached = _codexStatusCache;
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<PairingChallenge> startPairing() async {
     final json = await _postObject('/pairing/start', const {});
     return PairingChallenge.fromJson(json);
@@ -154,10 +213,12 @@ class HttpCodexMobileApi implements CodexMobileApi {
   Future<PairingResult> completePairing({
     required String bridgeUrl,
     required String pairingCode,
+    String? challengeId,
   }) async {
     setBridgeUrl(bridgeUrl);
     final json = await _postObject('/pairing/complete', {
       'code': pairingCode,
+      if (challengeId != null) 'challengeId': challengeId,
     });
     final result = PairingResult.fromJson(json);
     setAccessToken(result.token);
@@ -195,41 +256,149 @@ class HttpCodexMobileApi implements CodexMobileApi {
   }
 
   @override
+  Future<DownloadedFile> downloadFile({
+    required String projectId,
+    required String path,
+  }) async {
+    final json = await _getObject('/files/download', {
+      'projectId': projectId,
+      'path': path,
+    });
+    return DownloadedFile.fromJson(json);
+  }
+
+  @override
   Future<List<ConversationSummary>> listConversations() async {
-    final json = await _getJson('/conversations');
-    return _readList(
-      json,
-      'conversations',
-    ).map(ConversationSummary.fromJson).toList();
+    try {
+      final json = await _getJson('/conversations');
+      final conversations = _readList(
+        json,
+        'conversations',
+      ).map(ConversationSummary.fromJson).toList();
+      _conversationCache = conversations;
+      return conversations;
+    } catch (_) {
+      final cached = _conversationCache;
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ConversationDetail> readConversation({
+    required String conversationId,
+  }) async {
+    try {
+      final json = await _getObject('/conversations/$conversationId');
+      final detail = ConversationDetail.fromJson(json);
+      _conversationDetailCache[conversationId] = detail;
+      return detail;
+    } catch (_) {
+      final cached = _conversationDetailCache[conversationId];
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ConversationDetail> sendConversationMessage({
+    required String conversationId,
+    required String content,
+  }) async {
+    final json = await _postObject('/conversations/$conversationId/messages', {
+      'role': 'user',
+      'content': content,
+    });
+    _throwIfBridgeFailure(json);
+    final detail = json['detail'];
+    ConversationDetail current;
+    if (detail is Map<String, Object?>) {
+      current = ConversationDetail.fromJson(detail);
+    } else {
+      current = ConversationDetail.fromJson(json);
+    }
+    if (_hasConversationAssistantReplyAfterPrompt(current.messages, content)) {
+      return current;
+    }
+    return _waitForConversationReply(
+      conversationId: conversationId,
+      prompt: content,
+    );
   }
 
   @override
   Future<List<CodexThreadGroup>> listCodexThreadGroups() async {
-    final json = await _getJson('/codex/threads');
-    return CodexThreadCollection.fromJson(json).groups;
+    try {
+      final json = await _getJson('/codex/threads');
+      final groups = CodexThreadCollection.fromJson(json).groups;
+      _threadGroupCache = groups;
+      return groups;
+    } catch (_) {
+      final cached = _threadGroupCache;
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
   }
 
   @override
   Future<CodexThreadDetail> readCodexThread({required String threadId}) async {
-    final json = await _getJson('/codex/threads/$threadId');
-    return CodexThreadDetail.fromJson(json);
+    try {
+      final json = await _getJson('/codex/threads/$threadId');
+      final detail = CodexThreadDetail.fromJson(json);
+      _threadDetailCache[threadId] = detail;
+      return detail;
+    } catch (_) {
+      final cached = _threadDetailCache[threadId];
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
   }
 
   @override
-  Future<void> startCodexTurn({
+  Future<CodexThreadDetail> startCodexTurn({
     required String threadId,
     required String prompt,
   }) async {
-    await _postObject('/codex/turns', {
+    final result = await _postObject('/codex/turns', {
       'threadId': threadId,
       'prompt': prompt,
     });
+    _throwIfBridgeFailure(result);
+    return _waitForThreadReply(threadId: threadId, prompt: prompt);
   }
 
   @override
   Future<List<ApprovalRequest>> listApprovals() async {
     final json = await _getJson('/approvals');
     return _readList(json, 'approvals').map(ApprovalRequest.fromJson).toList();
+  }
+
+  @override
+  Future<BridgeSecurityStatus> getSecurityStatus() async {
+    final json = await _getObject('/security/status');
+    return BridgeSecurityStatus.fromJson(json);
+  }
+
+  @override
+  Future<List<PairingTokenStatus>> listPairingTokens() async {
+    final json = await _getJson('/pairing/tokens');
+    return _readList(
+      json,
+      'tokens',
+    ).map(PairingTokenStatus.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<void> revokePairingToken({required String fingerprint}) async {
+    await _postObject('/pairing/tokens/$fingerprint/revoke', const {});
   }
 
   @override
@@ -240,37 +409,59 @@ class HttpCodexMobileApi implements CodexMobileApi {
 
   @override
   Future<CodexSyncSnapshot> getSyncState() async {
-    final json = await _getObject('/sync/state');
-    return CodexSyncSnapshot.fromJson(json);
+    try {
+      final json = await _getObject('/sync/state');
+      final state = CodexSyncSnapshot.fromJson(json);
+      _syncStateCache = state;
+      return state;
+    } catch (_) {
+      final cached = _syncStateCache;
+      if (cached != null) {
+        return cached;
+      }
+      rethrow;
+    }
   }
 
   @override
   Stream<CodexSyncSnapshot> watchSyncState() async* {
-    final request = await _client.getUrl(_requireEndpoint().uri('/sync/stream'));
-    _applyCommonHeaders(request);
-    request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
-    final response = await request.close();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await utf8.decoder.bind(response).join();
-      throw HttpException('Bridge returned ${response.statusCode}: $body');
-    }
-
-    var dataBuffer = StringBuffer();
-    await for (final line in response
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
-      if (line.startsWith('data:')) {
-        dataBuffer.write(line.substring(5).trimLeft());
-        continue;
+    try {
+      final request = await _client.getUrl(
+        _requireEndpoint().uri('/sync/stream'),
+      );
+      _applyCommonHeaders(request);
+      request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
+      final response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await utf8.decoder.bind(response).join();
+        throw HttpException('Bridge returned ${response.statusCode}: $body');
       }
 
-      if (line.isEmpty && dataBuffer.isNotEmpty) {
-        final decoded = jsonDecode(dataBuffer.toString());
-        dataBuffer = StringBuffer();
-        if (decoded is Map<String, Object?>) {
-          yield CodexSyncSnapshot.fromJson(decoded);
+      var dataBuffer = StringBuffer();
+      await for (final line
+          in response.transform(utf8.decoder).transform(const LineSplitter())) {
+        if (line.startsWith('data:')) {
+          dataBuffer.write(line.substring(5).trimLeft());
+          continue;
+        }
+
+        if (line.isEmpty && dataBuffer.isNotEmpty) {
+          final decoded = jsonDecode(dataBuffer.toString());
+          dataBuffer = StringBuffer();
+          if (decoded is Map<String, Object?>) {
+            final state = CodexSyncSnapshot.fromJson(decoded);
+            _syncStateCache = state;
+            yield state;
+          }
         }
       }
+    } catch (_) {
+      final cached = _syncStateCache;
+      if (cached != null) {
+        yield cached;
+        return;
+      }
+      rethrow;
     }
   }
 
@@ -336,7 +527,9 @@ class HttpCodexMobileApi implements CodexMobileApi {
     final request = await _client.postUrl(_requireEndpoint().uri(path));
     _applyCommonHeaders(request);
     request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(body));
+    final encoded = utf8.encode(jsonEncode(body));
+    request.contentLength = encoded.length;
+    request.add(encoded);
     final decoded = await _sendJsonRequest(request);
     if (decoded is Map<String, Object?>) {
       return decoded;
@@ -351,6 +544,89 @@ class HttpCodexMobileApi implements CodexMobileApi {
       throw HttpException('Bridge returned ${response.statusCode}: $body');
     }
     return jsonDecode(body);
+  }
+
+  Future<CodexThreadDetail> _waitForThreadReply({
+    required String threadId,
+    required String prompt,
+  }) async {
+    CodexThreadDetail? latest;
+    for (var attempt = 0; attempt < _turnReplyPollAttempts; attempt += 1) {
+      latest = await readCodexThread(threadId: threadId);
+      if (_hasAssistantReplyAfterPrompt(latest.messages, prompt)) {
+        return latest;
+      }
+      await Future<void>.delayed(_turnReplyPollDelay);
+    }
+
+    throw StateError('Windows Codex 已接收请求，但手机端没有读到新的 ASSISTANT 回复。');
+  }
+
+  bool _hasAssistantReplyAfterPrompt(
+    List<CodexThreadMessage> messages,
+    String prompt,
+  ) {
+    var sawPrompt = false;
+    for (final message in messages) {
+      final role = message.role.toLowerCase();
+      if (role == 'user' && _matchesPrompt(message.text, prompt)) {
+        sawPrompt = true;
+        continue;
+      }
+      if (sawPrompt && role == 'assistant' && message.text.trim().isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<ConversationDetail> _waitForConversationReply({
+    required String conversationId,
+    required String prompt,
+  }) async {
+    ConversationDetail? latest;
+    for (var attempt = 0; attempt < _turnReplyPollAttempts; attempt += 1) {
+      latest = await readConversation(conversationId: conversationId);
+      if (_hasConversationAssistantReplyAfterPrompt(latest.messages, prompt)) {
+        return latest;
+      }
+      await Future<void>.delayed(_turnReplyPollDelay);
+    }
+
+    throw StateError('Windows Codex 已接收请求，但手机端没有读到新的 ASSISTANT 回复。');
+  }
+
+  bool _hasConversationAssistantReplyAfterPrompt(
+    List<ConversationMessage> messages,
+    String prompt,
+  ) {
+    var sawPrompt = false;
+    for (final message in messages) {
+      final role = message.role.toLowerCase();
+      if (role == 'user' && _matchesPrompt(message.content, prompt)) {
+        sawPrompt = true;
+        continue;
+      }
+      if (sawPrompt && role == 'assistant' && message.content.trim().isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _matchesPrompt(String messageText, String prompt) {
+    final message = messageText.trim();
+    final value = prompt.trim();
+    return message == value || message.contains(value) || value.contains(message);
+  }
+
+  void _throwIfBridgeFailure(Map<String, Object?> json) {
+    final ok = json['ok'] ?? json['Ok'];
+    final sent = json['sent'] ?? json['Sent'];
+    if (ok == false || sent == false) {
+      final error = json['error'] ?? json['Error'] ?? 'Windows Codex 没有接受这次发送。';
+      throw StateError(error.toString());
+    }
   }
 
   void _applyCommonHeaders(HttpClientRequest request) {
@@ -375,10 +651,7 @@ class HttpCodexMobileApi implements CodexMobileApi {
     return endpoint;
   }
 
-  List<Map<String, Object?>> _readList(
-    Object? json,
-    String field,
-  ) {
+  List<Map<String, Object?>> _readList(Object? json, String field) {
     if (json is List<Object?>) {
       return json.whereType<Map<String, Object?>>().toList(growable: false);
     }

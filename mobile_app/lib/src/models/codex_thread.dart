@@ -7,6 +7,9 @@ class CodexThreadSummary {
     required this.projectPath,
     required this.status,
     required this.updatedAt,
+    this.threadSource = '',
+    this.agentNickname = '',
+    this.agentRole = '',
   });
 
   final String id;
@@ -16,6 +19,11 @@ class CodexThreadSummary {
   final String projectPath;
   final String status;
   final DateTime updatedAt;
+  final String threadSource;
+  final String agentNickname;
+  final String agentRole;
+
+  bool get isSubagent => threadSource.trim().toLowerCase() == 'subagent';
 
   factory CodexThreadSummary.fromJson(Map<String, Object?> json) {
     final cwd = _readString(json['cwd']);
@@ -33,6 +41,9 @@ class CodexThreadSummary {
           ? 'unknown'
           : _readString(json['status']),
       updatedAt: _readTimestamp(json['updatedAt'] ?? json['updated_at']),
+      threadSource: _readString(json['threadSource'] ?? json['thread_source']),
+      agentNickname: _readString(json['agentNickname'] ?? json['agent_nickname']),
+      agentRole: _readString(json['agentRole'] ?? json['agent_role']),
     );
   }
 }
@@ -58,6 +69,7 @@ class CodexThreadCollection {
     final threads = _readThreadList(json)
         .map(CodexThreadSummary.fromJson)
         .where((thread) => thread.id.isNotEmpty)
+        .where((thread) => !thread.isSubagent)
         .toList();
 
     threads.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
@@ -102,6 +114,7 @@ class CodexThreadDetail {
     final threadJson = _readThreadObject(json);
     final thread = CodexThreadSummary.fromJson(threadJson);
     final messages = <CodexThreadMessage>[];
+    final seenMessages = <String>{};
 
     final turns = threadJson['turns'];
     if (turns is List<Object?>) {
@@ -113,7 +126,13 @@ class CodexThreadDetail {
 
         for (final item in items.whereType<Map<String, Object?>>()) {
           final message = _messageFromItem(item);
-          if (message != null && message.text.trim().isNotEmpty) {
+          if (message != null &&
+              message.text.trim().isNotEmpty &&
+              !_looksLikeInstructionBlock(message.text)) {
+            final key = '${message.role.trim().toLowerCase()}\n${message.text.trim()}';
+            if (!seenMessages.add(key)) {
+              continue;
+            }
             messages.add(message);
           }
         }
@@ -122,9 +141,31 @@ class CodexThreadDetail {
 
     return CodexThreadDetail(
       thread: thread,
-      messages: List.unmodifiable(messages),
+      messages: List.unmodifiable(_mergeAdjacentAssistantMessages(messages)),
     );
   }
+}
+
+List<CodexThreadMessage> _mergeAdjacentAssistantMessages(
+  List<CodexThreadMessage> messages,
+) {
+  final merged = <CodexThreadMessage>[];
+  for (final message in messages) {
+    if (merged.isNotEmpty &&
+        merged.last.role.trim().toLowerCase() == 'assistant' &&
+        message.role.trim().toLowerCase() == 'assistant') {
+      final previous = merged.removeLast();
+      merged.add(
+        CodexThreadMessage(
+          role: previous.role,
+          text: '${previous.text.trimRight()}\n\n${message.text.trimLeft()}',
+        ),
+      );
+      continue;
+    }
+    merged.add(message);
+  }
+  return merged;
 }
 
 List<Map<String, Object?>> _readThreadList(Object? json) {
@@ -162,12 +203,19 @@ CodexThreadMessage? _messageFromItem(Map<String, Object?> item) {
       }
       final parts = content
           .whereType<Map<String, Object?>>()
-          .map((input) => _readString(input['text'] ?? input['path'] ?? input['url'] ?? input['name']))
+          .map(
+            (input) => _readString(
+              input['text'] ?? input['path'] ?? input['url'] ?? input['name'],
+            ),
+          )
           .where((text) => text.trim().isNotEmpty)
           .toList();
       return CodexThreadMessage(role: 'user', text: parts.join('\n'));
     case 'agentMessage':
-      return CodexThreadMessage(role: 'assistant', text: _readString(item['text']));
+      return CodexThreadMessage(
+        role: 'assistant',
+        text: _readString(item['text']),
+      );
     case 'plan':
       return CodexThreadMessage(role: 'plan', text: _readString(item['text']));
     case 'reasoning':
@@ -186,6 +234,15 @@ CodexThreadMessage? _messageFromItem(Map<String, Object?> item) {
         text: output.isEmpty ? command : '$command\n$output',
       );
     default:
+      final role = _readString(item['role']).toLowerCase();
+      if (role == 'user' || role == 'assistant') {
+        final text = _readString(
+          item['text'] ?? item['content'] ?? item['message'],
+        );
+        return text.trim().isEmpty
+            ? null
+            : CodexThreadMessage(role: role, text: text);
+      }
       return null;
   }
 }
@@ -221,4 +278,18 @@ String _lastPathSegment(String path) {
   }
   final parts = trimmed.split(RegExp(r'[\\/]'));
   return parts.isEmpty || parts.last.isEmpty ? trimmed : parts.last;
+}
+
+bool _looksLikeInstructionBlock(String text) {
+  final normalized = text.trimLeft().toLowerCase();
+  return normalized.startsWith('<permissions instructions>') ||
+      normalized.startsWith('<app-context>') ||
+      normalized.startsWith('<skills_instructions>') ||
+      normalized.startsWith('<plugins_instructions>') ||
+      normalized.startsWith('<collaboration_mode>') ||
+      normalized.startsWith('<environment_context>') ||
+      normalized.startsWith('# available skills') ||
+      normalized.contains('filesystem sandboxing defines which files can be read or written') ||
+      normalized.contains('you are running inside the codex (desktop) app') ||
+      normalized.contains('### available skills');
 }
