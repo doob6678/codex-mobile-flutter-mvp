@@ -213,7 +213,12 @@ class _PairingScreenState extends State<PairingScreen> {
       return;
     }
 
-    _bridgeUrlController.text = payload.bridgeUrl;
+    final candidates = bridgeCandidatesForCurrentWebOrigin(
+      payload.bridgeUrls,
+      isWeb: kIsWeb,
+      webOrigin: kIsWeb ? Uri.base.origin : '',
+    );
+    _bridgeUrlController.text = candidates.first;
     _codeController.text = payload.pairingCode;
     setState(() {
       _result = null;
@@ -225,7 +230,7 @@ class _PairingScreenState extends State<PairingScreen> {
       );
     });
     await _completePairingAcrossUrls(
-      payload.bridgeUrls,
+      candidates,
       pairingCode: payload.pairingCode,
       challengeId: payload.challengeId,
     );
@@ -236,10 +241,11 @@ class _PairingScreenState extends State<PairingScreen> {
     required String pairingCode,
     String? challengeId,
   }) async {
-    final candidates = bridgeUrls
-        .map((bridgeUrl) => bridgeUrl.trim())
-        .where((bridgeUrl) => bridgeUrl.isNotEmpty)
-        .toList(growable: false);
+    final candidates = bridgeCandidatesForCurrentWebOrigin(
+      bridgeUrls,
+      isWeb: kIsWeb,
+      webOrigin: kIsWeb ? Uri.base.origin : '',
+    );
     if (candidates.isEmpty) {
       setState(() => _error = '请输入 Windows Bridge 地址。');
       return;
@@ -271,22 +277,22 @@ class _PairingScreenState extends State<PairingScreen> {
     }
 
     setState(() {
-      _error = _buildConnectionError(
-        candidates,
-        lastError,
-      );
+      _error = _buildConnectionError(candidates, lastError);
     });
   }
 
   String _buildConnectionError(List<String> candidates, Object? lastError) {
-    final privateCandidates = candidates.where(_looksLikePrivateBridgeUrl).toList(growable: false);
+    final privateCandidates = candidates
+        .where(_looksLikePrivateBridgeUrl)
+        .toList(growable: false);
     final message = lastError.toString();
     if (message.contains('Pairing challenge was not found') ||
         message.contains('Pairing challenge expired')) {
       return '这个二维码配对挑战已使用或过期。请刷新 Windows 上的 /connect 页面，重新扫码。';
     }
 
-    if (_looksLikeNetworkRouteError(lastError) && privateCandidates.isNotEmpty) {
+    if (_looksLikeNetworkRouteError(lastError) &&
+        privateCandidates.isNotEmpty) {
       final first = privateCandidates.first;
       return '当前手机网络无法路由到 Windows 内网地址 $first。请改用 Cloudflare/Tailscale/ZeroTier/WireGuard 等跨网地址，或在 Windows 端设置 CODEX_MOBILE_EXTERNAL_BRIDGE_URLS 后重新扫码。';
     }
@@ -337,6 +343,37 @@ class _PairingScreenState extends State<PairingScreen> {
         message.contains('no route') ||
         message.contains('connection reset');
   }
+}
+
+@visibleForTesting
+List<String> bridgeCandidatesForCurrentWebOrigin(
+  List<String> bridgeUrls, {
+  required bool isWeb,
+  required String webOrigin,
+}) {
+  final seen = <String>{};
+  final candidates = <String>[];
+
+  void add(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || !seen.add(trimmed)) {
+      return;
+    }
+    candidates.add(trimmed);
+  }
+
+  if (isWeb) {
+    final origin = webOrigin.trim();
+    if (origin.isNotEmpty && origin != 'null') {
+      add(origin);
+    }
+  }
+
+  for (final bridgeUrl in bridgeUrls) {
+    add(bridgeUrl);
+  }
+
+  return candidates;
 }
 
 class _PairingExplainer extends StatelessWidget {
@@ -448,7 +485,9 @@ class BridgeQrPayload {
     final pairingCode = decoded['pairingCode'] as String? ?? '';
     final challengeId = decoded['challengeId'] as String? ?? '';
     final expiresAt = DateTime.tryParse(decoded['expiresAt'] as String? ?? '');
-    final candidateBridgeUrls = bridgeUrls.isNotEmpty ? bridgeUrls : [bridgeUrl];
+    final candidateBridgeUrls = bridgeUrls.isNotEmpty
+        ? bridgeUrls
+        : [bridgeUrl];
     if (candidateBridgeUrls.first.isEmpty ||
         pairingCode.isEmpty ||
         challengeId.isEmpty ||

@@ -1,5 +1,6 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_app/src/api/bridge_endpoint.dart';
+import 'package:mobile_app/src/api/codex_mobile_api.dart';
 import 'package:mobile_app/src/models/approval.dart';
 import 'package:mobile_app/src/models/bridge_network.dart';
 import 'package:mobile_app/src/models/codex_backend.dart';
@@ -9,6 +10,7 @@ import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
 import 'package:mobile_app/src/models/sync_state.dart';
 import 'package:mobile_app/src/screens/conversations_screen.dart';
+import 'package:mobile_app/src/screens/pairing_screen.dart';
 
 void main() {
   group('models parse bridge JSON', () {
@@ -144,7 +146,10 @@ void main() {
 
       expect(detail.conversation.id, 'conv-1');
       expect(detail.conversation.title, 'Bridge setup');
-      expect(detail.messages.map((message) => message.role), ['user', 'assistant']);
+      expect(detail.messages.map((message) => message.role), [
+        'user',
+        'assistant',
+      ]);
       expect(detail.messages.last.content, 'Pairing completed');
     });
 
@@ -180,10 +185,7 @@ void main() {
               'turns': [
                 {
                   'items': [
-                    {
-                      'type': 'agentMessage',
-                      'text': 'Windows Codex 已读取真实线程内容',
-                    },
+                    {'type': 'agentMessage', 'text': 'Windows Codex 已读取真实线程内容'},
                   ],
                 },
               ],
@@ -430,19 +432,13 @@ void main() {
             'turns': [
               {
                 'items': [
-                  {
-                    'type': 'agentMessage',
-                    'text': 'Windows 旧回复',
-                  },
+                  {'type': 'agentMessage', 'text': 'Windows 旧回复'},
                   {
                     'type': 'userMessage',
                     'id': 'mobile_user_1',
                     'source': 'mobile-bridge',
                     'content': [
-                      {
-                        'type': 'text',
-                        'text': '手机端发送但 Windows 历史尚未刷新',
-                      },
+                      {'type': 'text', 'text': '手机端发送但 Windows 历史尚未刷新'},
                     ],
                   },
                 ],
@@ -459,44 +455,38 @@ void main() {
       },
     );
 
-    test(
-      'CodexThreadDetail hides instruction blocks from readable chat',
-      () {
-        final detail = CodexThreadDetail.fromJson({
-          'thread': {
-            'id': 'thread_1',
-            'name': '过滤指令',
-            'cwd': r'C:\repo',
-            'turns': [
-              {
-                'items': [
-                  {
-                    'type': 'agentMessage',
-                    'text':
-                        '<permissions instructions>\nFilesystem sandboxing defines which files can be read or written.',
-                  },
-                  {
-                    'type': 'agentMessage',
-                    'text': '真实助手回复',
-                  },
-                  {
-                    'type': 'userMessage',
-                    'content': [
-                      {'type': 'text', 'text': '真实用户问题'},
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        });
+    test('CodexThreadDetail hides instruction blocks from readable chat', () {
+      final detail = CodexThreadDetail.fromJson({
+        'thread': {
+          'id': 'thread_1',
+          'name': '过滤指令',
+          'cwd': r'C:\repo',
+          'turns': [
+            {
+              'items': [
+                {
+                  'type': 'agentMessage',
+                  'text':
+                      '<permissions instructions>\nFilesystem sandboxing defines which files can be read or written.',
+                },
+                {'type': 'agentMessage', 'text': '真实助手回复'},
+                {
+                  'type': 'userMessage',
+                  'content': [
+                    {'type': 'text', 'text': '真实用户问题'},
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      });
 
-        expect(detail.messages.map((message) => message.text), [
-          '真实助手回复',
-          '真实用户问题',
-        ]);
-      },
-    );
+      expect(detail.messages.map((message) => message.text), [
+        '真实助手回复',
+        '真实用户问题',
+      ]);
+    });
 
     test('ApprovalRequest reads commands and available actions', () {
       final approval = ApprovalRequest.fromJson({
@@ -664,24 +654,27 @@ void main() {
       ]);
     });
 
-    test('CodexBackendStatus explains live and fallback conversation modes', () {
-      final live = CodexBackendStatus.fromJson({
-        'available': true,
-        'message': 'codex app-server reachable',
-        'checkedAt': '2026-06-01T12:00:00Z',
-      });
-      final fallback = CodexBackendStatus.fromJson({
-        'available': false,
-        'message': 'codex app-server timed out',
-        'checkedAt': '2026-06-01T12:01:00Z',
-      });
+    test(
+      'CodexBackendStatus explains live and fallback conversation modes',
+      () {
+        final live = CodexBackendStatus.fromJson({
+          'available': true,
+          'message': 'codex app-server reachable',
+          'checkedAt': '2026-06-01T12:00:00Z',
+        });
+        final fallback = CodexBackendStatus.fromJson({
+          'available': false,
+          'message': 'codex app-server timed out',
+          'checkedAt': '2026-06-01T12:01:00Z',
+        });
 
-      expect(live.label, 'Bridge 实时');
-      expect(live.usesFallbackHistory, isFalse);
-      expect(fallback.label, '历史兜底');
-      expect(fallback.usesFallbackHistory, isTrue);
-      expect(fallback.message, contains('timed out'));
-    });
+        expect(live.label, 'Bridge 实时');
+        expect(live.usesFallbackHistory, isFalse);
+        expect(fallback.label, '历史兜底');
+        expect(fallback.usesFallbackHistory, isTrue);
+        expect(fallback.message, contains('timed out'));
+      },
+    );
 
     test('conversation file links keep existing markdown links intact', () {
       const source =
@@ -697,37 +690,45 @@ void main() {
       final decoded = normalizeConversationFileReference(encoded);
 
       expect(decoded, contains('学校提交'));
-      expect(decoded, contains('数据库/superpowers/plans/2026-05-31-2024-exam-latex-render-fix.md'));
+      expect(
+        decoded,
+        contains(
+          '数据库/superpowers/plans/2026-05-31-2024-exam-latex-render-fix.md',
+        ),
+      );
       expect(decoded, isNot(contains('%E5')));
     });
 
-    test('absolute conversation file paths resolve under the longest project root', () {
-      const projects = [
-        ProjectSummary(
-          id: 'desktop',
-          name: 'Desktop',
-          rootPath: r'C:\Users\doob\Desktop',
-          trusted: true,
-        ),
-        ProjectSummary(
-          id: 'db',
-          name: '数据库',
-          rootPath: r'C:\Users\doob\Desktop\学校提交\2026年复习资料\数据库',
-          trusted: true,
-        ),
-      ];
+    test(
+      'absolute conversation file paths resolve under the longest project root',
+      () {
+        const projects = [
+          ProjectSummary(
+            id: 'desktop',
+            name: 'Desktop',
+            rootPath: r'C:\Users\doob\Desktop',
+            trusted: true,
+          ),
+          ProjectSummary(
+            id: 'db',
+            name: '数据库',
+            rootPath: r'C:\Users\doob\Desktop\学校提交\2026年复习资料\数据库',
+            trusted: true,
+          ),
+        ];
 
-      final match = matchProjectByAbsolutePath(
-        projects,
-        r'C:\Users\doob\Desktop\学校提交\2026年复习资料\数据库\superpowers\plans\2026-05-31-2024-exam-latex-render-fix.md',
-      );
+        final match = matchProjectByAbsolutePath(
+          projects,
+          r'C:\Users\doob\Desktop\学校提交\2026年复习资料\数据库\superpowers\plans\2026-05-31-2024-exam-latex-render-fix.md',
+        );
 
-      expect(match?.project.id, 'db');
-      expect(
-        match?.basePath,
-        'superpowers/plans/2026-05-31-2024-exam-latex-render-fix.md',
-      );
-    });
+        expect(match?.project.id, 'db');
+        expect(
+          match?.basePath,
+          'superpowers/plans/2026-05-31-2024-exam-latex-render-fix.md',
+        );
+      },
+    );
   });
 
   group('BridgeEndpoint', () {
@@ -743,6 +744,34 @@ void main() {
         uri.toString(),
         'http://127.0.0.1:5010/api/files/read?projectId=proj+1&path=lib%5Cmain.dart',
       );
+    });
+
+    test('web endpoint uses current origin instead of stale saved LAN URL', () {
+      final resolved = resolveBridgeUrlForEndpoint(
+        'http://10.250.236.241:5010',
+        isWeb: true,
+        webOrigin:
+            'https://reservations-subtle-fabrics-perform.trycloudflare.com',
+      );
+
+      expect(
+        resolved,
+        'https://reservations-subtle-fabrics-perform.trycloudflare.com',
+      );
+    });
+
+    test('web QR candidates prefer current origin before private QR URLs', () {
+      final candidates = bridgeCandidatesForCurrentWebOrigin(
+        ['http://10.250.236.241:5010', 'https://old.trycloudflare.com'],
+        isWeb: true,
+        webOrigin: 'https://current.trycloudflare.com',
+      );
+
+      expect(candidates, [
+        'https://current.trycloudflare.com',
+        'http://10.250.236.241:5010',
+        'https://old.trycloudflare.com',
+      ]);
     });
   });
 }

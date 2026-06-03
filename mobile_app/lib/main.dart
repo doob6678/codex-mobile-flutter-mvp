@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'src/api/bridge_session_store.dart';
 import 'src/api/codex_mobile_api.dart';
@@ -16,7 +17,11 @@ Future<void> main() async {
   runApp(
     CodexMobileApp(
       api: HttpCodexMobileApi(
-        savedSession.hasBridgeUrl ? savedSession.bridgeUrl : defaultBridgeUrl,
+        resolveBridgeUrlForEndpoint(
+          savedSession.hasBridgeUrl ? savedSession.bridgeUrl : defaultBridgeUrl,
+          isWeb: kIsWeb,
+          webOrigin: kIsWeb ? Uri.base.origin : '',
+        ),
         accessToken: savedSession.accessToken,
         sessionStore: sessionStore,
       ),

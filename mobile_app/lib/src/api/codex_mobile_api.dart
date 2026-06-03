@@ -171,11 +171,10 @@ class HttpCodexMobileApi implements CodexMobileApi {
     http.Client? client,
     String? accessToken,
     BridgeSessionStore? sessionStore,
-  })
-    : _endpoint = _createEndpoint(bridgeUrl),
-      _client = client ?? http.Client(),
-      _accessToken = _normalizeToken(accessToken),
-      _sessionStore = sessionStore;
+  }) : _endpoint = _createEndpoint(bridgeUrl),
+       _client = client ?? http.Client(),
+       _accessToken = _normalizeToken(accessToken),
+       _sessionStore = sessionStore;
 
   static const int _turnReplyPollAttempts = 90;
   static const Duration _turnReplyPollDelay = Duration(seconds: 2);
@@ -655,7 +654,9 @@ class HttpCodexMobileApi implements CodexMobileApi {
         sawPrompt = true;
         continue;
       }
-      if (sawPrompt && role == 'assistant' && message.content.trim().isNotEmpty) {
+      if (sawPrompt &&
+          role == 'assistant' &&
+          message.content.trim().isNotEmpty) {
         return true;
       }
     }
@@ -665,7 +666,9 @@ class HttpCodexMobileApi implements CodexMobileApi {
   bool _matchesPrompt(String messageText, String prompt) {
     final message = messageText.trim();
     final value = prompt.trim();
-    return message == value || message.contains(value) || value.contains(message);
+    return message == value ||
+        message.contains(value) ||
+        value.contains(message);
   }
 
   void _throwIfBridgeFailure(Map<String, Object?> json) {
@@ -710,11 +713,12 @@ class HttpCodexMobileApi implements CodexMobileApi {
   }
 
   static BridgeEndpoint? _createEndpoint(String bridgeUrl) {
-    final value = bridgeUrl.trim();
+    final value = resolveBridgeUrlForEndpoint(
+      bridgeUrl,
+      isWeb: kIsWeb,
+      webOrigin: kIsWeb ? Uri.base.origin : '',
+    ).trim();
     if (value.isEmpty) {
-      if (kIsWeb) {
-        return BridgeEndpoint(Uri.base.origin);
-      }
       return null;
     }
     return BridgeEndpoint(value);
@@ -741,4 +745,17 @@ class HttpCodexMobileApi implements CodexMobileApi {
     }
     return raw.whereType<Map<String, Object?>>().toList(growable: false);
   }
+}
+
+String resolveBridgeUrlForEndpoint(
+  String bridgeUrl, {
+  required bool isWeb,
+  required String webOrigin,
+}) {
+  final origin = webOrigin.trim();
+  if (isWeb && origin.isNotEmpty && origin != 'null') {
+    return origin;
+  }
+
+  return bridgeUrl.trim();
 }

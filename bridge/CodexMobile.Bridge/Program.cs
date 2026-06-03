@@ -121,10 +121,7 @@ if (Directory.Exists(ipadWebRoot))
         OnPrepareResponse = context =>
         {
             var fileName = context.File.Name;
-            context.Context.Response.Headers.CacheControl =
-                string.Equals(fileName, "index.html", StringComparison.OrdinalIgnoreCase)
-                    ? "no-cache"
-                    : "public, max-age=604800";
+            context.Context.Response.Headers.CacheControl = IpadWebCachePolicy.CacheControlFor(fileName);
         },
     });
 }
@@ -461,6 +458,27 @@ static async Task<IResult> SafeCodexResult(Func<Task<CodexAppServerJsonResponse>
 }
 
 public partial class Program;
+
+public static class IpadWebCachePolicy
+{
+    private static readonly HashSet<string> RuntimeFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "index.html",
+        "main.dart.js",
+        "flutter.js",
+        "flutter_bootstrap.js",
+        "flutter_service_worker.js",
+        "version.json",
+        "manifest.json",
+    };
+
+    public static string CacheControlFor(string fileName)
+    {
+        return RuntimeFiles.Contains(fileName)
+            ? "no-cache, no-store, must-revalidate"
+            : "public, max-age=604800";
+    }
+}
 
 public static class FileEndpointHelpers
 {

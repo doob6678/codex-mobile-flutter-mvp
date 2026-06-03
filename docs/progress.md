@@ -34,6 +34,7 @@
 - 2026-06-03: `scripts/package.ps1` now clears old Bridge output folders before publishing, so stale runtime files such as `bridge-external-urls.txt` and old tunnel URLs do not leak into release packages.
 - 2026-06-03: `/connect` now sends no-store cache headers and the Windows-local pairing page explicitly explains that QR challenges are valid for 5 minutes and single-use. The same note separates challenge expiry from temporary Cloudflare tunnel URL changes after Bridge/tunnel restarts.
 - 2026-06-03: Mobile/iPad goal displays now render localized status labels (`进行中`, `暂停`, `完成`) instead of raw enum text, and paused goals use a distinct pause icon/tone in the one-line conversation strip.
+- 2026-06-03: Fixed iPad/Web refresh using a stale LAN Bridge URL from localStorage. When the app is loaded from `/ipad/` through an HTTPS Cloudflare/LAN origin, Web API calls now resolve to the current page origin first, and QR pairing candidates put that origin before private `http://10.x/192.168.x` URLs.
 
 ## Findings
 

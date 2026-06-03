@@ -34,6 +34,7 @@ var cases = new (string Name, Action Test)[]
     ("connect page prefers reachable non-loopback bridge URL", tests.ConnectPagePrefersReachableNonLoopbackBridgeUrl),
     ("connection page creates QR pairing payload", tests.ConnectionPageCreatesQrPairingPayload),
     ("connect page is Windows-local only", tests.ConnectPageIsWindowsLocalOnly),
+    ("ipad web runtime files are not long cached", tests.IpadWebRuntimeFilesAreNotLongCached),
     ("startup guide prints real phone URLs and local QR page", tests.StartupGuidePrintsRealPhoneUrlsAndLocalQrPage),
     ("pairing challenge includes secret id and code", tests.PairingChallengeIncludesSecretIdAndCode),
     ("pairing complete requires challenge id", tests.PairingCompleteRequiresChallengeId),
@@ -639,6 +640,14 @@ internal sealed class BridgeServiceTests
         AssertFalse(IsLocalOnlyRequest("/connect", "move-president-guns-victorian.trycloudflare.com", IPAddress.Loopback), "tunnel host cannot render QR");
         AssertFalse(IsLocalOnlyRequest("/connect", "10.250.236.241:5010", IPAddress.Loopback), "LAN host cannot render QR");
         AssertFalse(IsLocalOnlyRequest("/connect", "127.0.0.1:5010", IPAddress.Parse("10.250.236.241")), "remote address cannot render QR");
+    }
+
+    public void IpadWebRuntimeFilesAreNotLongCached()
+    {
+        AssertEqual("no-cache, no-store, must-revalidate", IpadWebCachePolicy.CacheControlFor("index.html"), "index no cache");
+        AssertEqual("no-cache, no-store, must-revalidate", IpadWebCachePolicy.CacheControlFor("main.dart.js"), "runtime js no cache");
+        AssertEqual("no-cache, no-store, must-revalidate", IpadWebCachePolicy.CacheControlFor("flutter_bootstrap.js"), "bootstrap no cache");
+        AssertEqual("public, max-age=604800", IpadWebCachePolicy.CacheControlFor("assets/FontManifest.json"), "assets can be cached");
     }
 
     public void StartupGuidePrintsRealPhoneUrlsAndLocalQrPage()
