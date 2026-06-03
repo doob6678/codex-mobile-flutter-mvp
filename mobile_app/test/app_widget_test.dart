@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
@@ -94,30 +94,34 @@ void main() {
     expect(api.completedChallengeId, 'challenge-1');
   });
 
-  testWidgets('QR auto-pairing does not leave a one-time challenge to submit again', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'QR auto-pairing does not leave a one-time challenge to submit again',
+    (tester) async {
+      final api = _FakeApi();
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('扫描 Bridge QR'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('扫描 Bridge QR'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('bridge-qr-payload-field')),
-      '{"type":"codex-mobile-bridge","version":"1","challengeId":"challenge-used-once","bridgeUrl":"https://wrist-seriously-occasion-src.trycloudflare.com","pairingCode":"620688","expiresAt":"2026-06-01T12:00:00Z"}',
-    );
-    await tester.tap(find.text('使用 QR 内容'));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('bridge-qr-payload-field')),
+        '{"type":"codex-mobile-bridge","version":"1","challengeId":"challenge-used-once","bridgeUrl":"https://wrist-seriously-occasion-src.trycloudflare.com","pairingCode":"620688","expiresAt":"2026-06-01T12:00:00Z"}',
+      );
+      await tester.tap(find.text('使用 QR 内容'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('已配对 test device'), findsOneWidget);
-    expect(find.text('完成配对'), findsNothing);
-    expect(find.textContaining('Pairing challenge was not found'), findsNothing);
-    expect(api.attemptedBridgeUrls, [
-      'https://wrist-seriously-occasion-src.trycloudflare.com',
-    ]);
-  });
+      expect(find.text('已配对 test device'), findsOneWidget);
+      expect(find.text('完成配对'), findsNothing);
+      expect(
+        find.textContaining('Pairing challenge was not found'),
+        findsNothing,
+      );
+      expect(api.attemptedBridgeUrls, [
+        'https://wrist-seriously-occasion-src.trycloudflare.com',
+      ]);
+    },
+  );
 
   testWidgets('QR payload can fall back across bridge URLs on mobile data', (
     tester,
@@ -148,8 +152,7 @@ void main() {
   testWidgets('pairing explains private IP failures on mobile data', (
     tester,
   ) async {
-    final api = _FakeApi()
-      ..failBridgeUrlAlways('http://10.250.236.241:5010');
+    final api = _FakeApi()..failBridgeUrlAlways('http://10.250.236.241:5010');
     await tester.pumpWidget(CodexMobileApp(api: api));
     await tester.pumpAndSettle();
 
@@ -319,6 +322,28 @@ void main() {
     expect(find.text('实现手机端查看 Codex 任务进度和完成情况'), findsNothing);
   });
 
+  testWidgets('thread detail labels paused goal without raw enum text', (
+    tester,
+  ) async {
+    final api = _FakeApi(threadGoalStatus: GoalStatus.paused);
+    await tester.pumpWidget(CodexMobileApp(api: api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('对话').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('codex_mobile_app'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('实现调研目标并测试'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/goal'), findsOneWidget);
+    expect(find.text('暂停'), findsOneWidget);
+    expect(find.text('paused'), findsNothing);
+  });
+
   testWidgets('thread detail can send a mobile prompt to Windows Codex', (
     tester,
   ) async {
@@ -358,140 +383,143 @@ void main() {
     expect(find.text('Windows Codex 已继续执行手机发送的消息'), findsOneWidget);
   });
 
-  testWidgets('thread detail streams assistant delta without thread id while sending', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    api.holdCodexTurn = true;
-    api.syncEvents = [
-      CodexSyncEvent(
-        type: 'codex.appserver.notification',
-        entityId: 'item/agentMessage/delta',
-        timestamp: DateTime.now().toUtc().add(const Duration(minutes: 1)),
-        payload: const {
-          'method': 'item/agentMessage/delta',
-          'delta': 'Windows 正在流式输出',
-          'message': 'Windows Codex 正在生成回复',
-        },
-      ),
-    ];
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'thread detail streams assistant delta without thread id while sending',
+    (tester) async {
+      final api = _FakeApi();
+      api.holdCodexTurn = true;
+      api.syncEvents = [
+        CodexSyncEvent(
+          type: 'codex.appserver.notification',
+          entityId: 'item/agentMessage/delta',
+          timestamp: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          payload: const {
+            'method': 'item/agentMessage/delta',
+            'delta': 'Windows 正在流式输出',
+            'message': 'Windows Codex 正在生成回复',
+          },
+        ),
+      ];
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开菜单'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('对话').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('codex_mobile_app'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('实现调研目标并测试'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('codex_mobile_app'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实现调研目标并测试'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('codex-turn-prompt-field')),
-      '触发手机端流式显示',
-    );
-    await tester.tap(find.byTooltip('发送到 Windows Codex'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('codex-turn-prompt-field')),
+        '触发手机端流式显示',
+      );
+      await tester.tap(find.byTooltip('发送到 Windows Codex'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Windows 正在流式输出'), findsOneWidget);
-    expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
+      expect(find.text('Windows 正在流式输出'), findsOneWidget);
+      expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
 
-    api.completeHeldCodexTurn();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-  });
+      api.completeHeldCodexTurn();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    },
+  );
 
-  testWidgets('thread detail updates pending bubble from sync stream without waiting for polling', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    api.holdCodexTurn = true;
-    api.enableSyncStream();
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'thread detail updates pending bubble from sync stream without waiting for polling',
+    (tester) async {
+      final api = _FakeApi();
+      api.holdCodexTurn = true;
+      api.enableSyncStream();
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开菜单'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('对话').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('codex_mobile_app'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('实现调研目标并测试'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('codex_mobile_app'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实现调研目标并测试'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('codex-turn-prompt-field')),
-      '触发 sync stream 立即显示',
-    );
-    await tester.tap(find.byTooltip('发送到 Windows Codex'));
-    await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('codex-turn-prompt-field')),
+        '触发 sync stream 立即显示',
+      );
+      await tester.tap(find.byTooltip('发送到 Windows Codex'));
+      await tester.pump();
 
-    api.emitSyncEvents([
-      CodexSyncEvent(
-        type: 'codex.appserver.notification',
-        entityId: 'item/agentMessage/delta',
-        timestamp: DateTime.now().toUtc().add(const Duration(minutes: 1)),
-        payload: const {
-          'method': 'item/agentMessage/delta',
-          'delta': 'SSE 立即推送的 ASSISTANT 片段',
-          'message': 'Windows Codex 正在生成回复',
-        },
-      ),
-    ]);
-    await tester.pump();
+      api.emitSyncEvents([
+        CodexSyncEvent(
+          type: 'codex.appserver.notification',
+          entityId: 'item/agentMessage/delta',
+          timestamp: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          payload: const {
+            'method': 'item/agentMessage/delta',
+            'delta': 'SSE 立即推送的 ASSISTANT 片段',
+            'message': 'Windows Codex 正在生成回复',
+          },
+        ),
+      ]);
+      await tester.pump();
 
-    expect(find.text('SSE 立即推送的 ASSISTANT 片段'), findsOneWidget);
-    expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
+      expect(find.text('SSE 立即推送的 ASSISTANT 片段'), findsOneWidget);
+      expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
 
-    api.completeHeldCodexTurn();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-  });
+      api.completeHeldCodexTurn();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    },
+  );
 
-  testWidgets('thread detail streams assistant text discovered by polling history', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    api.holdCodexTurn = true;
-    api.assistantDuringHeldTurn = '轮询历史时读到的 ASSISTANT 片段';
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'thread detail streams assistant text discovered by polling history',
+    (tester) async {
+      final api = _FakeApi();
+      api.holdCodexTurn = true;
+      api.assistantDuringHeldTurn = '轮询历史时读到的 ASSISTANT 片段';
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开菜单'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('对话').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('codex_mobile_app'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('实现调研目标并测试'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('codex_mobile_app'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实现调研目标并测试'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('codex-turn-prompt-field')),
-      '触发历史轮询显示',
-    );
-    await tester.tap(find.byTooltip('发送到 Windows Codex'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+      await tester.enterText(
+        find.byKey(const Key('codex-turn-prompt-field')),
+        '触发历史轮询显示',
+      );
+      await tester.tap(find.byTooltip('发送到 Windows Codex'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('轮询历史时读到的 ASSISTANT 片段'), findsOneWidget);
-    expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
+      expect(find.text('轮询历史时读到的 ASSISTANT 片段'), findsOneWidget);
+      expect(find.text('正在等待 Windows Codex 回复...'), findsNothing);
 
-    api.completeHeldCodexTurn();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-  });
+      api.completeHeldCodexTurn();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('thread detail passively refreshes Windows-side messages', (
     tester,
@@ -524,36 +552,36 @@ void main() {
     expect(find.text('Windows 后续写入也会被手机轮询刷新'), findsOneWidget);
   });
 
-  testWidgets('thread detail renders Bridge mobile-user overlay after refresh', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    api.externalThreadMessages = const [
-      CodexThreadMessage(role: 'user', text: '手机端 overlay 的 USER 消息'),
-    ];
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'thread detail renders Bridge mobile-user overlay after refresh',
+    (tester) async {
+      final api = _FakeApi();
+      api.externalThreadMessages = const [
+        CodexThreadMessage(role: 'user', text: '手机端 overlay 的 USER 消息'),
+      ];
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开菜单'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('对话').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('codex_mobile_app'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('实现调研目标并测试'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('codex_mobile_app'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实现调研目标并测试'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('手机端 overlay 的 USER 消息'), findsOneWidget);
-    expect(find.text('已隐藏 1 条技术消息'), findsOneWidget);
-  });
+      expect(find.text('手机端 overlay 的 USER 消息'), findsOneWidget);
+      expect(find.text('已隐藏 1 条技术消息'), findsOneWidget);
+    },
+  );
 
   testWidgets('thread detail keeps long titles out of the chat body', (
     tester,
   ) async {
-    const longTitle =
-        '实现调研目标并测试，同时保留非常长的 Windows Codex 标题但不能挤占手机对话空间';
+    const longTitle = '实现调研目标并测试，同时保留非常长的 Windows Codex 标题但不能挤占手机对话空间';
     await tester.pumpWidget(
       CodexMobileApp(api: _FakeApi(threadTitle: longTitle)),
     );
@@ -576,29 +604,30 @@ void main() {
     expect(find.text('手机端和 Windows 端同步'), findsOneWidget);
   });
 
-  testWidgets('conversation history keeps cached Windows threads during jitter', (
-    tester,
-  ) async {
-    final api = _FakeApi();
-    await tester.pumpWidget(CodexMobileApp(api: api));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'conversation history keeps cached Windows threads during jitter',
+    (tester) async {
+      final api = _FakeApi();
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('打开菜单'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('对话').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
 
-    expect(find.text('codex_mobile_app'), findsOneWidget);
+      expect(find.text('codex_mobile_app'), findsOneWidget);
 
-    api.failConversationHistory = true;
-    await tester.tap(find.byTooltip('刷新对话'));
-    await tester.pumpAndSettle();
+      api.failConversationHistory = true;
+      await tester.tap(find.byTooltip('刷新对话'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('codex_mobile_app'), findsOneWidget);
-    expect(find.text('Bridge setup'), findsOneWidget);
-    expect(find.textContaining('codex app-server reachable'), findsOneWidget);
-  });
+      expect(find.text('codex_mobile_app'), findsOneWidget);
+      expect(find.text('Bridge setup'), findsOneWidget);
+      expect(find.textContaining('codex app-server reachable'), findsOneWidget);
+    },
+  );
 
   testWidgets('bridge conversation detail can continue a local conversation', (
     tester,
@@ -613,7 +642,10 @@ void main() {
     await tester.tap(find.text('对话').last);
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView).first, const Offset(0, -500));
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -500),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bridge setup').last);
     await tester.pumpAndSettle();
@@ -729,34 +761,35 @@ void main() {
     expect(find.byType(MarkdownBody), findsOneWidget);
   });
 
-  testWidgets('html preview routes away from markdown and falls back on desktop', (
-    tester,
-  ) async {
-    final previousPlatform = debugDefaultTargetPlatformOverride;
-    try {
-      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: FilePreviewScreen(
-            preview: FilePreview(
-              path: 'dist/index.html',
-              content:
-                  '<!doctype html><html><body><h1>HTML Flow</h1></body></html>',
-              language: 'html',
-              contentType: 'text/html; charset=utf-8',
+  testWidgets(
+    'html preview routes away from markdown and falls back on desktop',
+    (tester) async {
+      final previousPlatform = debugDefaultTargetPlatformOverride;
+      try {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: FilePreviewScreen(
+              preview: FilePreview(
+                path: 'dist/index.html',
+                content:
+                    '<!doctype html><html><body><h1>HTML Flow</h1></body></html>',
+                language: 'html',
+                contentType: 'text/html; charset=utf-8',
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byType(MarkdownBody), findsNothing);
-      expect(find.textContaining('HTML 预览在当前平台不可用'), findsOneWidget);
-      expect(find.textContaining('<!doctype html>'), findsOneWidget);
-    } finally {
-      debugDefaultTargetPlatformOverride = previousPlatform;
-    }
-  });
+        expect(find.byType(MarkdownBody), findsNothing);
+        expect(find.textContaining('HTML 预览在当前平台不可用'), findsOneWidget);
+        expect(find.textContaining('<!doctype html>'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = previousPlatform;
+      }
+    },
+  );
 
   test('file preview export writes content to the temp export folder', () async {
     final exportFile = File(
@@ -778,9 +811,13 @@ void main() {
 }
 
 class _FakeApi implements CodexMobileApi {
-  _FakeApi({this.threadTitle = '实现调研目标并测试'});
+  _FakeApi({
+    this.threadTitle = '实现调研目标并测试',
+    this.threadGoalStatus = GoalStatus.active,
+  });
 
   final String threadTitle;
+  final GoalStatus threadGoalStatus;
   String bridgeUrl = '';
   String? accessToken;
   String? completedBridgeUrl;
@@ -1013,107 +1050,108 @@ class _FakeApi implements CodexMobileApi {
       throw const SocketException('Connection reset by peer');
     }
     return [
-    CodexThreadGroup(
-      projectName: '调研Java_Harness',
-      projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
-      threads: [
-        CodexThreadSummary(
-          id: 'thread-1',
-          title: '实现手机小说 Agent',
-          preview: '移动端小说 Agent 功能继续实现',
-          projectName: '调研Java_Harness',
-          projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
-          status: 'running',
-          updatedAt: DateTime.utc(2026, 5, 31, 10),
-        ),
-        CodexThreadSummary(
-          id: 'thread-2',
-          title: '整理 Java Harness 文档',
-          preview: '离线讲义和知识库整理',
-          projectName: '调研Java_Harness',
-          projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
-          status: 'completed',
-          updatedAt: DateTime.utc(2026, 5, 30, 12),
-        ),
-        CodexThreadSummary(
-          id: 'thread-subagent',
-          title: '子 agent 分析线程',
-          preview: '不应该插入主对话列表',
-          projectName: '调研Java_Harness',
-          projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
-          status: 'idle',
-          updatedAt: DateTime.utc(2026, 5, 30, 11),
-          threadSource: 'subagent',
-          agentNickname: 'Fermat',
-          agentRole: 'explorer',
-        ),
-        CodexThreadSummary(
-          id: 'thread-4',
-          title: '排查超长路径和多线程同步问题',
-          preview: '窄屏也要能快速区分多个会话',
-          projectName: '调研Java_Harness',
-          projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
-          status: 'idle',
-          updatedAt: DateTime.utc(2026, 5, 30, 9),
-        ),
-      ],
-    ),
-    CodexThreadGroup(
-      projectName: 'codex_mobile_app',
-      projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
-      threads: [
-        CodexThreadSummary(
-          id: 'thread-3',
-          title: threadTitle,
-          preview: '手机端和 Windows Bridge 同步开发',
-          projectName: 'codex_mobile_app',
-          projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
-          status: 'running',
-          updatedAt: DateTime.utc(2026, 5, 31, 11),
-        ),
-      ],
-    ),
-  ];
+      CodexThreadGroup(
+        projectName: '调研Java_Harness',
+        projectPath: r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+        threads: [
+          CodexThreadSummary(
+            id: 'thread-1',
+            title: '实现手机小说 Agent',
+            preview: '移动端小说 Agent 功能继续实现',
+            projectName: '调研Java_Harness',
+            projectPath:
+                r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+            status: 'running',
+            updatedAt: DateTime.utc(2026, 5, 31, 10),
+          ),
+          CodexThreadSummary(
+            id: 'thread-2',
+            title: '整理 Java Harness 文档',
+            preview: '离线讲义和知识库整理',
+            projectName: '调研Java_Harness',
+            projectPath:
+                r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+            status: 'completed',
+            updatedAt: DateTime.utc(2026, 5, 30, 12),
+          ),
+          CodexThreadSummary(
+            id: 'thread-subagent',
+            title: '子 agent 分析线程',
+            preview: '不应该插入主对话列表',
+            projectName: '调研Java_Harness',
+            projectPath:
+                r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+            status: 'idle',
+            updatedAt: DateTime.utc(2026, 5, 30, 11),
+            threadSource: 'subagent',
+            agentNickname: 'Fermat',
+            agentRole: 'explorer',
+          ),
+          CodexThreadSummary(
+            id: 'thread-4',
+            title: '排查超长路径和多线程同步问题',
+            preview: '窄屏也要能快速区分多个会话',
+            projectName: '调研Java_Harness',
+            projectPath:
+                r'C:\Users\TestUser\Desktop\个人资料\项目收集和调研\调研Java_Harness',
+            status: 'idle',
+            updatedAt: DateTime.utc(2026, 5, 30, 9),
+          ),
+        ],
+      ),
+      CodexThreadGroup(
+        projectName: 'codex_mobile_app',
+        projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
+        threads: [
+          CodexThreadSummary(
+            id: 'thread-3',
+            title: threadTitle,
+            preview: '手机端和 Windows Bridge 同步开发',
+            projectName: 'codex_mobile_app',
+            projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
+            status: 'running',
+            updatedAt: DateTime.utc(2026, 5, 31, 11),
+          ),
+        ],
+      ),
+    ];
   }
 
   @override
   Future<CodexThreadDetail> readCodexThread({required String threadId}) async {
     return CodexThreadDetail(
-        thread: CodexThreadSummary(
-          id: threadId,
-          title: threadTitle,
-          preview: '手机端和 Windows Bridge 同步开发',
-          projectName: 'codex_mobile_app',
-          projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
-          status: 'idle',
-          updatedAt: DateTime.utc(2026, 5, 31, 11),
+      thread: CodexThreadSummary(
+        id: threadId,
+        title: threadTitle,
+        preview: '手机端和 Windows Bridge 同步开发',
+        projectName: 'codex_mobile_app',
+        projectPath: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
+        status: 'idle',
+        updatedAt: DateTime.utc(2026, 5, 31, 11),
+      ),
+      messages: [
+        const CodexThreadMessage(role: 'user', text: '手机端和 Windows 端同步'),
+        const CodexThreadMessage(role: 'assistant', text: '已读取真实 Codex 线程'),
+        const CodexThreadMessage(
+          role: 'command',
+          text: 'flutter test\nAll tests passed',
         ),
-        messages: [
-          const CodexThreadMessage(role: 'user', text: '手机端和 Windows 端同步'),
-          const CodexThreadMessage(role: 'assistant', text: '已读取真实 Codex 线程'),
+        if (_heldCodexTurn != null &&
+            !_heldCodexTurn!.isCompleted &&
+            lastTurnPrompt != null)
+          CodexThreadMessage(role: 'user', text: lastTurnPrompt!),
+        if (_heldCodexTurn != null &&
+            !_heldCodexTurn!.isCompleted &&
+            assistantDuringHeldTurn != null)
+          CodexThreadMessage(role: 'assistant', text: assistantDuringHeldTurn!),
+        if (_codexTurnSent)
           const CodexThreadMessage(
-            role: 'command',
-            text: 'flutter test\nAll tests passed',
+            role: 'assistant',
+            text: 'Windows Codex 已继续执行手机发送的消息',
           ),
-          if (_heldCodexTurn != null &&
-              !_heldCodexTurn!.isCompleted &&
-              lastTurnPrompt != null)
-            CodexThreadMessage(role: 'user', text: lastTurnPrompt!),
-          if (_heldCodexTurn != null &&
-              !_heldCodexTurn!.isCompleted &&
-              assistantDuringHeldTurn != null)
-            CodexThreadMessage(
-              role: 'assistant',
-              text: assistantDuringHeldTurn!,
-            ),
-          if (_codexTurnSent)
-            const CodexThreadMessage(
-              role: 'assistant',
-              text: 'Windows Codex 已继续执行手机发送的消息',
-            ),
-          ...externalThreadMessages,
-        ],
-      );
+        ...externalThreadMessages,
+      ],
+    );
   }
 
   @override
@@ -1232,7 +1270,7 @@ class _FakeApi implements CodexMobileApi {
     goal: GoalRecord(
       id: 'goal-1',
       objective: '实现手机端查看 Codex 任务进度和完成情况',
-      status: GoalStatus.active,
+      status: threadGoalStatus,
       source: 'windows-codex-history',
       threadId: 'thread-3',
       updatedAt: DateTime.utc(2026),
@@ -1241,7 +1279,7 @@ class _FakeApi implements CodexMobileApi {
       GoalRecord(
         id: 'goal-1',
         objective: '实现手机端查看 Codex 任务进度和完成情况',
-        status: GoalStatus.active,
+        status: threadGoalStatus,
         source: 'windows-codex-history',
         threadId: 'thread-3',
         updatedAt: DateTime.utc(2026),

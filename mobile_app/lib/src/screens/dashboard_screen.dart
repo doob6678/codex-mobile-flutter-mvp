@@ -169,10 +169,7 @@ class _BridgeMonitorCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _PanelHeader(
-              icon: Icons.computer,
-              title: 'Bridge Monitor',
-            ),
+            const _PanelHeader(icon: Icons.computer, title: 'Bridge Monitor'),
             const SizedBox(height: 12),
             Text(
               connected ? 'Bridge 已连接' : 'Bridge 未连接',
@@ -199,9 +196,11 @@ class _SecurityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final requiresChallenge = securityStatus?.pairingRequiresChallengeId == true;
+    final requiresChallenge =
+        securityStatus?.pairingRequiresChallengeId == true;
     final endpointCount = network?.endpoints.length ?? 0;
-    final recommendedCount = network?.endpoints
+    final recommendedCount =
+        network?.endpoints
             .where((endpoint) => endpoint.isRecommendedForMobile)
             .length ??
         0;
@@ -211,10 +210,7 @@ class _SecurityCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _PanelHeader(
-              icon: Icons.shield_outlined,
-              title: 'Security',
-            ),
+            const _PanelHeader(icon: Icons.shield_outlined, title: 'Security'),
             const SizedBox(height: 12),
             Text(
               requiresChallenge
@@ -274,10 +270,10 @@ class _GoalCard extends StatelessWidget {
             if (goal != null) ...[
               const SizedBox(height: 6),
               Text(
-                '${goal.status.name} · ${goal.source}${goals.length > 1 ? " · 共 ${goals.length} 个目标" : ""}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF6B7280),
-                ),
+                '${goal.status.label} · ${goal.source}${goals.length > 1 ? " · 共 ${goals.length} 个目标" : ""}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B7280)),
               ),
             ],
           ],

@@ -113,10 +113,7 @@ class _GoalComposer extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '设置 /goal',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('设置 /goal', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 10),
             TextField(
               controller: controller,
@@ -227,7 +224,7 @@ class _GoalSummary extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '${item.status.name} · ${item.source}',
+                        '${item.status.label} · ${item.source}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall,
@@ -252,10 +249,7 @@ class _TaskList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (tasks.isEmpty) {
-      return const SizedBox(
-        height: 120,
-        child: EmptyView(message: '还没有任务进度。'),
-      );
+      return const SizedBox(height: 120, child: EmptyView(message: '还没有任务进度。'));
     }
 
     return Card(

@@ -184,6 +184,9 @@ app.MapGet("/network/interfaces", (HttpContext context, NetworkInterfaceService 
 });
 app.MapGet("/connect", (HttpContext context, ConnectPageService connectPage) =>
 {
+    context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    context.Response.Headers.Pragma = "no-cache";
+    context.Response.Headers.Expires = "0";
     var port = context.Request.Host.Port
         ?? (string.Equals(context.Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80);
     var page = connectPage.Create(context.Request.Scheme, port, TimeSpan.FromMinutes(5));

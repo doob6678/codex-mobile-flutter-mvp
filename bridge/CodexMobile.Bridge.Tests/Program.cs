@@ -615,6 +615,7 @@ internal sealed class BridgeServiceTests
         AssertTrue(page.Html.Contains("background:#fff", StringComparison.Ordinal), "white background rendered");
         AssertTrue(page.Html.Contains("http://127.0.0.1:51870", StringComparison.Ordinal), "alternative URL rendered");
         AssertTrue(page.Html.Contains("iPad/Web 地址", StringComparison.Ordinal), "iPad web section rendered");
+        AssertTrue(page.Html.Contains("有效期 5 分钟且只能使用一次", StringComparison.Ordinal), "pairing TTL warning rendered");
         AssertTrue(page.Html.Contains("http://192.168.31.25:51870/ipad/", StringComparison.Ordinal), "LAN iPad URL rendered");
         AssertTrue(page.Html.Contains("http://10.8.0.4:51870/ipad/", StringComparison.Ordinal), "VPN iPad URL rendered");
     }

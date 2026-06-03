@@ -158,6 +158,7 @@ public sealed class ConnectPageService
                 li { border:1px solid #e5e7eb; border-radius:12px; padding:12px; display:grid; gap:4px; }
                 li span { color:#6b7280; font-size:13px; }
                 .warning { color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:10px 12px; }
+                .notice { color:#1f2937; background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; }
                 @media (max-width: 720px) { main { padding:14px; } .panel { padding:18px; border-radius:14px; } .grid { grid-template-columns:1fr; } }
               </style>
             </head>
@@ -169,6 +170,7 @@ public sealed class ConnectPageService
                     <div>
                       <h1>连接 Codex Mobile Bridge</h1>
                       <p>在手机端点击“扫描 Bridge QR”，扫描这里的二维码即可连接 Windows Bridge。手机不要使用 127.0.0.1；二维码里已经写入当前推荐的真实地址。</p>
+                      <p class="notice">二维码配对挑战有效期 5 分钟且只能使用一次。手机提示挑战不存在或已过期时，刷新这个 Windows 本机页面后重新扫码；如果 Bridge 或 Cloudflare tunnel 重启，外部 https 地址也会变化，需要重新打开新地址。</p>
                       <div class="code">{{HtmlEncoder.Default.Encode(challenge.Code)}}</div>
                       <p>推荐地址：<code>{{HtmlEncoder.Default.Encode(preferred.Url)}}</code></p>
                       <p>过期时间：{{HtmlEncoder.Default.Encode(challenge.ExpiresAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss"))}}</p>

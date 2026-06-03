@@ -32,6 +32,8 @@
 - 2026-06-02: Bridge startup output, `start-bridge.ps1`, and the Windows-local `/connect` page now print copyable iPad/Web URLs with `/ipad/` appended, while still keeping QR challenge generation local-only.
 - 2026-06-03: Fixed iPad Web white screen. Root cause was `SharedPreferences.getInstance()` throwing `MissingPluginException(No implementation found for method getAll on channel plugins.flutter.io/shared_preferences)` in the Flutter Web build before `runApp()`. Web now uses a conditional `localStorage` Bridge session store, while native clients keep `shared_preferences`; startup also falls back to an in-memory store if session persistence fails. Verified `/ipad/` with Playwright against packaged Bridge: no JS errors and nonblank rendered pixels.
 - 2026-06-03: `scripts/package.ps1` now clears old Bridge output folders before publishing, so stale runtime files such as `bridge-external-urls.txt` and old tunnel URLs do not leak into release packages.
+- 2026-06-03: `/connect` now sends no-store cache headers and the Windows-local pairing page explicitly explains that QR challenges are valid for 5 minutes and single-use. The same note separates challenge expiry from temporary Cloudflare tunnel URL changes after Bridge/tunnel restarts.
+- 2026-06-03: Mobile/iPad goal displays now render localized status labels (`进行中`, `暂停`, `完成`) instead of raw enum text, and paused goals use a distinct pause icon/tone in the one-line conversation strip.
 
 ## Findings
 

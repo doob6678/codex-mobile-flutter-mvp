@@ -1,5 +1,13 @@
 enum GoalStatus { active, completed, paused }
 
+extension GoalStatusLabel on GoalStatus {
+  String get label => switch (this) {
+    GoalStatus.active => '进行中',
+    GoalStatus.paused => '暂停',
+    GoalStatus.completed => '完成',
+  };
+}
+
 enum CodexTaskStatus { pending, running, blocked, completed, failed }
 
 class GoalRecord {

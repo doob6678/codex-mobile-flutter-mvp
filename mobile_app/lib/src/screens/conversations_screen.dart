@@ -76,7 +76,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     try {
       codexStatus = await widget.api.getCodexStatus();
     } catch (error) {
-      codexStatus = cached?.codexStatus ??
+      codexStatus =
+          cached?.codexStatus ??
           CodexBackendStatus(
             available: false,
             message: error.toString(),
@@ -133,8 +134,7 @@ class _HistoryList extends StatelessWidget {
       return const SizedBox(height: 240, child: LoadingView());
     }
 
-    if (history!.codexGroups.isEmpty &&
-        history!.bridgeConversations.isEmpty) {
+    if (history!.codexGroups.isEmpty && history!.bridgeConversations.isEmpty) {
       return const SizedBox(
         height: 240,
         child: EmptyView(message: '还没有可显示的 Windows Codex 对话历史或 Bridge 会话。'),
@@ -304,10 +304,7 @@ class _CodexThreadGroups extends StatelessWidget {
   void _showThreadDetails(BuildContext context, CodexThreadSummary thread) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _ThreadDetailPage(
-          api: api,
-          thread: thread,
-        ),
+        builder: (context) => _ThreadDetailPage(api: api, thread: thread),
       ),
     );
   }
@@ -367,7 +364,9 @@ class _CodexProjectGroupTileState extends State<_CodexProjectGroupTile> {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
-              thread.preview.isEmpty ? widget.group.projectPath : thread.preview,
+              thread.preview.isEmpty
+                  ? widget.group.projectPath
+                  : thread.preview,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -554,16 +553,14 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
               ),
-              label: Text(
-                _showTechnicalMessages ? '隐藏技术消息' : '显示技术消息',
-              ),
+              label: Text(_showTechnicalMessages ? '隐藏技术消息' : '显示技术消息'),
             ),
             const SizedBox(width: 12),
             Text(
               '已隐藏 ${_hiddenMessageCount(_detail.messages)} 条技术消息',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF6B7280),
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B7280)),
             ),
           ],
         ),
@@ -659,7 +656,9 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
   }
 
   int _hiddenMessageCount(List<CodexThreadMessage> messages) {
-    return messages.where((message) => _isTechnicalMessage(message.role)).length;
+    return messages
+        .where((message) => _isTechnicalMessage(message.role))
+        .length;
   }
 
   bool _isTechnicalMessage(String role) {
@@ -684,17 +683,14 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
       setState(() {
         _syncState = state;
         _detail = refreshed;
-        _statusMessage = _latestProgressMessage(
-              state,
-              threadId: _detail.thread.id,
-            ) ??
+        _statusMessage =
+            _latestProgressMessage(state, threadId: _detail.thread.id) ??
             _statusMessage;
       });
       if (messagesChanged) {
         _scrollMessagesToEnd();
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _startPassiveThreadRefresh() {
@@ -774,34 +770,31 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
 
   void _watchThreadSyncProgress(int generation) {
     _syncSubscription?.cancel();
-    _syncSubscription = widget.api.watchSyncState().listen(
-      (state) {
-        if (!mounted || !_sending || generation != _sendGeneration) {
-          return;
-        }
+    _syncSubscription = widget.api.watchSyncState().listen((state) {
+      if (!mounted || !_sending || generation != _sendGeneration) {
+        return;
+      }
 
-        final message = _latestProgressMessage(
-          state,
-          threadId: _detail.thread.id,
-        );
-        final draft = _streamingAssistantDraft(
-          state,
-          threadId: _detail.thread.id,
-          since: _sendStartedAt,
-        );
-        setState(() {
-          _syncState = state;
-          if (message != null) {
-            _statusMessage = message;
-          }
-          if (draft.trim().isNotEmpty) {
-            _streamingReply = draft;
-          }
-        });
-        _scrollMessagesToEnd();
-      },
-      onError: (_) {},
-    );
+      final message = _latestProgressMessage(
+        state,
+        threadId: _detail.thread.id,
+      );
+      final draft = _streamingAssistantDraft(
+        state,
+        threadId: _detail.thread.id,
+        since: _sendStartedAt,
+      );
+      setState(() {
+        _syncState = state;
+        if (message != null) {
+          _statusMessage = message;
+        }
+        if (draft.trim().isNotEmpty) {
+          _streamingReply = draft;
+        }
+      });
+      _scrollMessagesToEnd();
+    }, onError: (_) {});
   }
 
   Future<void> _trackThreadProgress(int generation) async {
@@ -851,8 +844,7 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
               : refreshed;
         });
         _scrollMessagesToEnd();
-      } catch (_) {
-      }
+      } catch (_) {}
 
       if (!mounted || !_sending || generation != _sendGeneration) {
         return;
@@ -911,17 +903,18 @@ class _ConversationList extends StatelessWidget {
   ) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _ConversationDetailPage(
-          api: api,
-          conversation: conversation,
-        ),
+        builder: (context) =>
+            _ConversationDetailPage(api: api, conversation: conversation),
       ),
     );
   }
 }
 
 class _BridgeConversationDetailView extends StatefulWidget {
-  const _BridgeConversationDetailView({required this.api, required this.detail});
+  const _BridgeConversationDetailView({
+    required this.api,
+    required this.detail,
+  });
 
   final CodexMobileApi api;
   final ConversationDetail detail;
@@ -1158,7 +1151,8 @@ class _BridgeConversationDetailViewState
       setState(() {
         _syncState = state;
         _detail = refreshed;
-        _statusMessage = _latestProgressMessage(
+        _statusMessage =
+            _latestProgressMessage(
               state,
               conversationId: _detail.conversation.id,
               threadId: _detail.conversation.codexThreadId,
@@ -1168,8 +1162,7 @@ class _BridgeConversationDetailViewState
       if (messagesChanged) {
         _scrollMessagesToEnd();
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _startPassiveConversationRefresh() {
@@ -1237,8 +1230,7 @@ class _BridgeConversationDetailViewState
               : refreshed;
         });
         _scrollMessagesToEnd();
-      } catch (_) {
-      }
+      } catch (_) {}
 
       if (!mounted || !_sending || generation != _sendGeneration) {
         return;
@@ -1249,35 +1241,32 @@ class _BridgeConversationDetailViewState
 
   void _watchConversationSyncProgress(int generation) {
     _syncSubscription?.cancel();
-    _syncSubscription = widget.api.watchSyncState().listen(
-      (state) {
-        if (!mounted || !_sending || generation != _sendGeneration) {
-          return;
-        }
+    _syncSubscription = widget.api.watchSyncState().listen((state) {
+      if (!mounted || !_sending || generation != _sendGeneration) {
+        return;
+      }
 
-        final message = _latestProgressMessage(
-          state,
-          conversationId: _detail.conversation.id,
-          threadId: _detail.conversation.codexThreadId,
-        );
-        final draft = _streamingAssistantDraft(
-          state,
-          threadId: _detail.conversation.codexThreadId,
-          since: _sendStartedAt,
-        );
-        setState(() {
-          _syncState = state;
-          if (message != null) {
-            _statusMessage = message;
-          }
-          if (draft.trim().isNotEmpty) {
-            _streamingReply = draft;
-          }
-        });
-        _scrollMessagesToEnd();
-      },
-      onError: (_) {},
-    );
+      final message = _latestProgressMessage(
+        state,
+        conversationId: _detail.conversation.id,
+        threadId: _detail.conversation.codexThreadId,
+      );
+      final draft = _streamingAssistantDraft(
+        state,
+        threadId: _detail.conversation.codexThreadId,
+        since: _sendStartedAt,
+      );
+      setState(() {
+        _syncState = state;
+        if (message != null) {
+          _statusMessage = message;
+        }
+        if (draft.trim().isNotEmpty) {
+          _streamingReply = draft;
+        }
+      });
+      _scrollMessagesToEnd();
+    }, onError: (_) {});
   }
 
   void _scrollMessagesToEnd() {
@@ -1302,7 +1291,8 @@ class _ConversationDetailPage extends StatefulWidget {
   final ConversationSummary conversation;
 
   @override
-  State<_ConversationDetailPage> createState() => _ConversationDetailPageState();
+  State<_ConversationDetailPage> createState() =>
+      _ConversationDetailPageState();
 }
 
 class _ConversationDetailPageState extends State<_ConversationDetailPage> {
@@ -1312,7 +1302,9 @@ class _ConversationDetailPageState extends State<_ConversationDetailPage> {
   @override
   void initState() {
     super.initState();
-    _future = widget.api.readConversation(conversationId: widget.conversation.id);
+    _future = widget.api.readConversation(
+      conversationId: widget.conversation.id,
+    );
   }
 
   @override
@@ -1345,7 +1337,10 @@ class _ConversationDetailPageState extends State<_ConversationDetailPage> {
             }
             return Padding(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-              child: _BridgeConversationDetailView(api: widget.api, detail: detail),
+              child: _BridgeConversationDetailView(
+                api: widget.api,
+                detail: detail,
+              ),
             );
           },
         ),
@@ -1378,16 +1373,16 @@ class _ThreadMessageBubble extends StatelessWidget {
     final label = isUser ? 'USER' : 'ASSISTANT';
     final bubbleColor = isUser ? const Color(0xFF111827) : Colors.white;
     final textColor = isUser ? Colors.white : const Color(0xFF111827);
-    final borderColor = isUser ? const Color(0xFF111827) : const Color(0xFFE5E7EB);
+    final borderColor = isUser
+        ? const Color(0xFF111827)
+        : const Color(0xFFE5E7EB);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: LayoutBuilder(
         builder: (context, constraints) {
           return ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: constraints.maxWidth * 0.86,
-            ),
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.86),
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
@@ -1458,7 +1453,9 @@ class _ThreadMessageBubble extends StatelessWidget {
     try {
       final resolved = await _resolveProjectFile(activeApi, candidate);
       if (resolved == null) {
-        messenger.showSnackBar(SnackBar(content: Text('没有在当前目录匹配到文件：$candidate')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('没有在当前目录匹配到文件：$candidate')),
+        );
         return;
       }
 
@@ -1493,10 +1490,8 @@ class _ThreadMessageBubble extends StatelessWidget {
         }
         await navigator.push(
           MaterialPageRoute(
-            builder: (_) => FilePreviewScreen(
-              preview: preview,
-              downloadedFile: downloaded,
-            ),
+            builder: (_) =>
+                FilePreviewScreen(preview: preview, downloadedFile: downloaded),
           ),
         );
         return;
@@ -1542,7 +1537,10 @@ class _ThreadMessageBubble extends StatelessWidget {
     }
 
     if (project == null) {
-      final matched = matchProjectByWorkingDirectory(projects, workingDirectory);
+      final matched = matchProjectByWorkingDirectory(
+        projects,
+        workingDirectory,
+      );
       project = matched?.project;
       basePath = matched?.basePath ?? '';
     }
@@ -1552,13 +1550,16 @@ class _ThreadMessageBubble extends StatelessWidget {
     }
 
     if (basePath.isEmpty) {
-      final matched = matchProjectByWorkingDirectory([project], workingDirectory);
+      final matched = matchProjectByWorkingDirectory([
+        project,
+      ], workingDirectory);
       basePath = matched?.basePath ?? '';
     }
 
     for (final path in _candidatePaths(basePath, target)) {
       final listed = await _tryListPath(activeApi, project.id, path);
-      if (listed != null && (listed.isNotEmpty || !_hasKnownFileExtension(path))) {
+      if (listed != null &&
+          (listed.isNotEmpty || !_hasKnownFileExtension(path))) {
         return _ResolvedConversationFile(
           projectId: project.id,
           path: path,
@@ -1585,8 +1586,7 @@ class _ThreadMessageBubble extends StatelessWidget {
           isDirectory: false,
           isBinaryPreview: false,
         );
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     return null;
@@ -1642,7 +1642,9 @@ String _decodeFileReference(String value) {
 
 Iterable<String> _candidatePaths(String basePath, String candidate) sync* {
   final normalizedCandidate = candidate.replaceAll('\\', '/');
-  final normalizedBase = basePath.replaceAll('\\', '/').replaceAll(RegExp(r'^/+|/+$'), '');
+  final normalizedBase = basePath
+      .replaceAll('\\', '/')
+      .replaceAll(RegExp(r'^/+|/+$'), '');
   if (normalizedBase.isNotEmpty) {
     yield '$normalizedBase/$normalizedCandidate';
   }
@@ -1735,7 +1737,9 @@ ConversationProjectMatch? matchProjectByAbsolutePath(
     }
 
     if (normalized == root || normalized.startsWith('$root/')) {
-      final relative = normalized == root ? '' : normalized.substring(root.length + 1);
+      final relative = normalized == root
+          ? ''
+          : normalized.substring(root.length + 1);
       if (root.length > bestRootLength) {
         best = ConversationProjectMatch(project, relative);
         bestRootLength = root.length;
@@ -1764,7 +1768,11 @@ String? _latestProgressMessage(
   String? conversationId,
 }) {
   for (final event in state.events.reversed) {
-    if (!_eventMatches(event, threadId: threadId, conversationId: conversationId)) {
+    if (!_eventMatches(
+      event,
+      threadId: threadId,
+      conversationId: conversationId,
+    )) {
       continue;
     }
 
@@ -1932,7 +1940,8 @@ bool _eventMatches(
   String? conversationId,
 }) {
   final payloadThreadId = (event.payload['threadId'] ?? '').toString();
-  final payloadConversationId = (event.payload['conversationId'] ?? '').toString();
+  final payloadConversationId = (event.payload['conversationId'] ?? '')
+      .toString();
   if (threadId != null && threadId.isNotEmpty && payloadThreadId == threadId) {
     return true;
   }
@@ -1959,7 +1968,11 @@ class _ConversationSyncStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final goal = _currentThreadGoal(state, threadId);
-    final task = _currentRunningTask(state, threadId: threadId, conversationId: conversationId);
+    final task = _currentRunningTask(
+      state,
+      threadId: threadId,
+      conversationId: conversationId,
+    );
     if (goal == null && task == null) {
       return const SizedBox.shrink();
     }
@@ -1969,10 +1982,11 @@ class _ConversationSyncStrip extends StatelessWidget {
       children: [
         if (goal != null)
           _CompactStatusRow(
-            icon: Icons.flag_outlined,
+            icon: _goalStatusIcon(goal.status),
             label: '/goal',
             text: goal.objective,
-            trailing: goal.status.name,
+            trailing: goal.status.label,
+            tone: _goalStatusColor(goal.status),
           ),
         if (goal != null && task != null) const SizedBox(height: 6),
         if (task != null)
@@ -1997,6 +2011,7 @@ class _CompactStatusRow extends StatelessWidget {
     required this.text,
     required this.trailing,
     this.busy = false,
+    this.tone,
   });
 
   final IconData icon;
@@ -2004,9 +2019,11 @@ class _CompactStatusRow extends StatelessWidget {
   final String text;
   final String trailing;
   final bool busy;
+  final Color? tone;
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = tone ?? const Color(0xFF475569);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -2022,14 +2039,14 @@ class _CompactStatusRow extends StatelessWidget {
               child: CircularProgressIndicator(value: 0.35, strokeWidth: 2),
             )
           else
-            Icon(icon, size: 16, color: const Color(0xFF475569)),
+            Icon(icon, size: 16, color: statusColor),
           const SizedBox(width: 8),
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFF475569),
-                  fontWeight: FontWeight.w700,
-                ),
+              color: const Color(0xFF475569),
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -2046,8 +2063,9 @@ class _CompactStatusRow extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFF64748B),
-                ),
+              color: statusColor,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -2101,6 +2119,22 @@ bool _goalMatchesThread(GoalRecord goal, String threadId) {
     return true;
   }
   return goal.id == 'windows_goal_$threadId' || goal.id.endsWith(threadId);
+}
+
+IconData _goalStatusIcon(GoalStatus status) {
+  return switch (status) {
+    GoalStatus.active => Icons.flag_outlined,
+    GoalStatus.paused => Icons.pause_circle_outline,
+    GoalStatus.completed => Icons.check_circle_outline,
+  };
+}
+
+Color _goalStatusColor(GoalStatus status) {
+  return switch (status) {
+    GoalStatus.active => const Color(0xFF166534),
+    GoalStatus.paused => const Color(0xFF92400E),
+    GoalStatus.completed => const Color(0xFF2563EB),
+  };
 }
 
 CodexTaskRecord? _currentRunningTask(
@@ -2189,7 +2223,9 @@ class _CodexThreadErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2203,9 +2239,9 @@ class _CodexThreadErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Codex 线程读取失败，已切换到 Bridge 暂存消息：$error',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF78350F),
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF78350F)),
             ),
           ),
         ],
