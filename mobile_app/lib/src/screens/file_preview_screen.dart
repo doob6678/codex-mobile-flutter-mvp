@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/codex_file.dart';
 import 'file_preview_actions.dart';
 import 'html_preview.dart';
+import 'pdf_preview_renderer.dart';
 
 export 'file_preview_actions.dart' show persistPreviewExport;
 
@@ -176,6 +177,7 @@ class _PreviewBody extends StatelessWidget {
     if (content.isPdf) {
       return _PdfPreview(
         sourceName: content.downloadedFile?.fileName ?? content.preview.path,
+        bytes: Uint8List.fromList(content.bytes),
       );
     }
     if (content.isImage) {
@@ -323,9 +325,102 @@ class _ImagePreview extends StatelessWidget {
 }
 
 class _PdfPreview extends StatelessWidget {
-  const _PdfPreview({required this.sourceName});
+  const _PdfPreview({required this.sourceName, required this.bytes});
 
   final String sourceName;
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    if (supportsEmbeddedPdfPreview && bytes.isNotEmpty) {
+      return EmbeddedPdfPreview(bytes: bytes);
+    }
+
+    if (supportsRenderedPdfPreview && bytes.isNotEmpty) {
+      return _RenderedPdfPreview(sourceName: sourceName, bytes: bytes);
+    }
+
+    return _PdfFallback(sourceName: sourceName);
+  }
+}
+
+class _RenderedPdfPreview extends StatefulWidget {
+  const _RenderedPdfPreview({required this.sourceName, required this.bytes});
+
+  final String sourceName;
+  final Uint8List bytes;
+
+  @override
+  State<_RenderedPdfPreview> createState() => _RenderedPdfPreviewState();
+}
+
+class _RenderedPdfPreviewState extends State<_RenderedPdfPreview> {
+  late Future<List<Uint8List>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = renderPdfPages(widget.bytes);
+  }
+
+  @override
+  void didUpdateWidget(_RenderedPdfPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bytes != widget.bytes) {
+      _future = renderPdfPages(widget.bytes);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Uint8List>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final pages = snapshot.data ?? const <Uint8List>[];
+        if (snapshot.hasError || pages.isEmpty) {
+          return _PdfFallback(
+            sourceName: widget.sourceName,
+            error: snapshot.error?.toString(),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.only(bottom: 16),
+          itemCount: pages.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: InteractiveViewer(
+                minScale: 0.75,
+                maxScale: 4,
+                child: Image.memory(
+                  pages[index],
+                  gaplessPlayback: true,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _PdfFallback extends StatelessWidget {
+  const _PdfFallback({required this.sourceName, this.error});
+
+  final String sourceName;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -348,7 +443,9 @@ class _PdfPreview extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'PDF 已按二进制读取，不再当文本渲染。用右上角按钮下载或交给系统 PDF 应用打开，避免乱码。',
+              error == null
+                  ? 'PDF 已按二进制读取。当前平台暂不支持内嵌 PDF 渲染，用右上角按钮下载或交给系统 PDF 应用打开。'
+                  : 'PDF 内嵌渲染失败：$error。可用右上角按钮下载或交给系统 PDF 应用打开。',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: const Color(0xFF4B5563),

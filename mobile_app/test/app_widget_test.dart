@@ -97,7 +97,9 @@ void main() {
   testWidgets(
     'QR auto-pairing does not leave a one-time challenge to submit again',
     (tester) async {
-      final api = _FakeApi();
+      final api = _FakeApi(
+        projectRoot: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
+      );
       await tester.pumpWidget(CodexMobileApp(api: api));
       await tester.pumpAndSettle();
 
@@ -605,6 +607,52 @@ void main() {
   });
 
   testWidgets(
+    'thread file links open rendered preview and ignore duplicate taps',
+    (tester) async {
+      final api = _FakeApi(
+        projectRoot: r'C:\Users\TestUser\Desktop\code\dev\codex_mobile_app',
+      );
+      api.externalThreadMessages = const [
+        CodexThreadMessage(role: 'assistant', text: '00-总目录.md'),
+      ];
+      api.holdReadFile('00-总目录.md');
+
+      await tester.pumpWidget(CodexMobileApp(api: api));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('对话').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('codex_mobile_app'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实现调研目标并测试'));
+      await tester.pumpAndSettle();
+
+      final link = find.byWidgetPredicate(
+        (widget) => widget is MarkdownBody && widget.data.contains('00-总目录.md'),
+      );
+      expect(link, findsWidgets);
+
+      await tester.tap(link.last);
+      await tester.pump();
+      await tester.tap(link.last);
+      await tester.pump();
+
+      expect(api.readFileCallCount, 1);
+      expect(find.textContaining('正在打开 00-总目录.md'), findsOneWidget);
+
+      api.completeHeldReadFile();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FilePreviewScreen), findsOneWidget);
+      expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.textContaining('AgentScope Java Harness'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'conversation history keeps cached Windows threads during jitter',
     (tester) async {
       final api = _FakeApi();
@@ -814,10 +862,12 @@ class _FakeApi implements CodexMobileApi {
   _FakeApi({
     this.threadTitle = '实现调研目标并测试',
     this.threadGoalStatus = GoalStatus.active,
+    this.projectRoot = r'C:\work\codex_mobile_app',
   });
 
   final String threadTitle;
   final GoalStatus threadGoalStatus;
+  final String projectRoot;
   String bridgeUrl = '';
   String? accessToken;
   String? completedBridgeUrl;
@@ -839,6 +889,9 @@ class _FakeApi implements CodexMobileApi {
   List<CodexSyncEvent> syncEvents = const [];
   StreamController<CodexSyncSnapshot>? _syncStreamController;
   final Set<String> _alwaysFailBridgeUrls = <String>{};
+  String? _heldReadFilePath;
+  Completer<FilePreview>? _heldReadFile;
+  int readFileCallCount = 0;
 
   @override
   String get configuredBridgeUrl => bridgeUrl;
@@ -861,6 +914,19 @@ class _FakeApi implements CodexMobileApi {
   void emitSyncEvents(List<CodexSyncEvent> events) {
     syncEvents = events;
     _syncStreamController?.add(_syncSnapshot());
+  }
+
+  void holdReadFile(String path) {
+    _heldReadFilePath = path;
+    _heldReadFile = Completer<FilePreview>();
+  }
+
+  void completeHeldReadFile() {
+    final path = _heldReadFilePath;
+    if (path == null || _heldReadFile == null || _heldReadFile!.isCompleted) {
+      return;
+    }
+    _heldReadFile!.complete(_previewForPath(path));
   }
 
   @override
@@ -903,14 +969,14 @@ class _FakeApi implements CodexMobileApi {
   }
 
   @override
-  Future<List<ProjectSummary>> listProjects() async => const [
+  Future<List<ProjectSummary>> listProjects() async => [
     ProjectSummary(
       id: 'proj-1',
       name: 'codex_mobile_app',
-      rootPath: r'C:\work\codex_mobile_app',
+      rootPath: projectRoot,
       trusted: true,
     ),
-    ProjectSummary(
+    const ProjectSummary(
       id: 'knowledge-1',
       name: 'AgentScope Java Harness 知识库',
       rootPath:
@@ -954,19 +1020,13 @@ class _FakeApi implements CodexMobileApi {
   Future<FilePreview> readFile({
     required String projectId,
     required String path,
-  }) async => path == '00-总目录.md'
-      ? const FilePreview(
-          path: '00-总目录.md',
-          content: '# AgentScope Java Harness\n\n- 快速开始\n正文段落',
-          language: 'markdown',
-          contentType: 'text/markdown; charset=utf-8',
-        )
-      : const FilePreview(
-          path: 'lib/main.dart',
-          content: 'void main() {}',
-          language: 'dart',
-          contentType: 'text/plain; charset=utf-8',
-        );
+  }) async {
+    readFileCallCount += 1;
+    if (_heldReadFilePath == path && _heldReadFile != null) {
+      return _heldReadFile!.future;
+    }
+    return _previewForPath(path);
+  }
 
   @override
   Future<DownloadedFile> downloadFile({
@@ -981,6 +1041,20 @@ class _FakeApi implements CodexMobileApi {
     bytes: [0, 1, 2, 3],
     language: 'text',
   );
+
+  FilePreview _previewForPath(String path) => path == '00-总目录.md'
+      ? const FilePreview(
+          path: '00-总目录.md',
+          content: '# AgentScope Java Harness\n\n- 快速开始\n正文段落',
+          language: 'markdown',
+          contentType: 'text/markdown; charset=utf-8',
+        )
+      : const FilePreview(
+          path: 'lib/main.dart',
+          content: 'void main() {}',
+          language: 'dart',
+          contentType: 'text/plain; charset=utf-8',
+        );
 
   @override
   Future<List<ConversationSummary>> listConversations() async {

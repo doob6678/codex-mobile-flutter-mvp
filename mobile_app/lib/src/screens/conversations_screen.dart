@@ -1349,7 +1349,7 @@ class _ConversationDetailPageState extends State<_ConversationDetailPage> {
   }
 }
 
-class _ThreadMessageBubble extends StatelessWidget {
+class _ThreadMessageBubble extends StatefulWidget {
   const _ThreadMessageBubble({
     required this.role,
     required this.text,
@@ -1367,8 +1367,16 @@ class _ThreadMessageBubble extends StatelessWidget {
   final bool pending;
 
   @override
+  State<_ThreadMessageBubble> createState() => _ThreadMessageBubbleState();
+}
+
+class _ThreadMessageBubbleState extends State<_ThreadMessageBubble> {
+  bool _openingReferencedFile = false;
+  String? _openingReference;
+
+  @override
   Widget build(BuildContext context) {
-    final normalized = role.toLowerCase();
+    final normalized = widget.role.toLowerCase();
     final isUser = normalized == 'user';
     final label = isUser ? 'USER' : 'ASSISTANT';
     final bubbleColor = isUser ? const Color(0xFF111827) : Colors.white;
@@ -1403,7 +1411,7 @@ class _ThreadMessageBubble extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   MarkdownBody(
-                    data: linkifyConversationFileReferences(text),
+                    data: linkifyConversationFileReferences(widget.text),
                     selectable: true,
                     onTapLink: (label, href, title) => _openReferencedFile(
                       context,
@@ -1412,7 +1420,7 @@ class _ThreadMessageBubble extends StatelessWidget {
                     styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
                         .copyWith(
                           p: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: pending
+                            color: widget.pending
                                 ? const Color(0xFF6B7280)
                                 : textColor,
                           ),
@@ -1428,6 +1436,39 @@ class _ThreadMessageBubble extends StatelessWidget {
                           ),
                         ),
                   ),
+                  if (_openingReferencedFile) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: isUser
+                                ? Colors.white70
+                                : const Color(0xFF2563EB),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '正在打开 ${_openingReference ?? '文件'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: isUser
+                                      ? Colors.white70
+                                      : const Color(0xFF2563EB),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1438,7 +1479,7 @@ class _ThreadMessageBubble extends StatelessWidget {
   }
 
   Future<void> _openReferencedFile(BuildContext context, String target) async {
-    final activeApi = api;
+    final activeApi = widget.api;
     if (activeApi == null) {
       return;
     }
@@ -1448,8 +1489,19 @@ class _ThreadMessageBubble extends StatelessWidget {
       return;
     }
 
+    if (_openingReferencedFile) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('正在打开文件：${_openingReference ?? candidate}')),
+      );
+      return;
+    }
+
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _openingReferencedFile = true;
+      _openingReference = candidate;
+    });
     try {
       final resolved = await _resolveProjectFile(activeApi, candidate);
       if (resolved == null) {
@@ -1474,41 +1526,26 @@ class _ThreadMessageBubble extends StatelessWidget {
         return;
       }
 
-      if (resolved.isBinaryPreview) {
-        final downloaded = await activeApi.downloadFile(
-          projectId: resolved.projectId,
-          path: resolved.path,
-        );
-        final preview = FilePreview(
-          path: downloaded.path,
-          content: '',
-          language: downloaded.language,
-          contentType: downloaded.contentType,
-        );
-        if (!context.mounted) {
-          return;
-        }
-        await navigator.push(
-          MaterialPageRoute(
-            builder: (_) =>
-                FilePreviewScreen(preview: preview, downloadedFile: downloaded),
-          ),
-        );
-        return;
-      }
-
-      final preview = await activeApi.readFile(
-        projectId: resolved.projectId,
-        path: resolved.path,
-      );
       if (!context.mounted) {
         return;
       }
-      await navigator.push(
-        MaterialPageRoute(builder: (_) => FilePreviewScreen(preview: preview)),
+      await _openFilePreview(
+        context: context,
+        navigator: navigator,
+        api: activeApi,
+        projectId: resolved.projectId,
+        path: resolved.path,
+        binary: resolved.isBinaryPreview,
       );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _openingReferencedFile = false;
+          _openingReference = null;
+        });
+      }
     }
   }
 
@@ -1527,9 +1564,11 @@ class _ThreadMessageBubble extends StatelessWidget {
       target = absolute.basePath;
     }
 
-    if (project == null && projectId != null && projectId!.trim().isNotEmpty) {
+    if (project == null &&
+        widget.projectId != null &&
+        widget.projectId!.trim().isNotEmpty) {
       for (final item in projects) {
-        if (item.id == projectId) {
+        if (item.id == widget.projectId) {
           project = item;
           break;
         }
@@ -1539,7 +1578,7 @@ class _ThreadMessageBubble extends StatelessWidget {
     if (project == null) {
       final matched = matchProjectByWorkingDirectory(
         projects,
-        workingDirectory,
+        widget.workingDirectory,
       );
       project = matched?.project;
       basePath = matched?.basePath ?? '';
@@ -1552,14 +1591,14 @@ class _ThreadMessageBubble extends StatelessWidget {
     if (basePath.isEmpty) {
       final matched = matchProjectByWorkingDirectory([
         project,
-      ], workingDirectory);
+      ], widget.workingDirectory);
       basePath = matched?.basePath ?? '';
     }
 
     for (final path in _candidatePaths(basePath, target)) {
+      final hasKnownFileExtension = _hasKnownFileExtension(path);
       final listed = await _tryListPath(activeApi, project.id, path);
-      if (listed != null &&
-          (listed.isNotEmpty || !_hasKnownFileExtension(path))) {
+      if (!hasKnownFileExtension && listed != null) {
         return _ResolvedConversationFile(
           projectId: project.id,
           path: path,
@@ -1568,25 +1607,15 @@ class _ThreadMessageBubble extends StatelessWidget {
         );
       }
 
-      try {
-        if (_looksLikeBinaryPreview(path)) {
-          await activeApi.downloadFile(projectId: project.id, path: path);
-          return _ResolvedConversationFile(
-            projectId: project.id,
-            path: path,
-            isDirectory: false,
-            isBinaryPreview: true,
-          );
-        }
-
-        await activeApi.readFile(projectId: project.id, path: path);
+      final filePath = await _tryFindListedFile(activeApi, project.id, path);
+      if (filePath != null) {
         return _ResolvedConversationFile(
           projectId: project.id,
-          path: path,
+          path: filePath,
           isDirectory: false,
-          isBinaryPreview: false,
+          isBinaryPreview: _looksLikeBinaryPreview(filePath),
         );
-      } catch (_) {}
+      }
     }
 
     return null;
@@ -1661,6 +1690,76 @@ Future<List<CodexFile>?> _tryListPath(
   } catch (_) {
     return null;
   }
+}
+
+Future<String?> _tryFindListedFile(
+  CodexMobileApi api,
+  String projectId,
+  String path,
+) async {
+  final normalized = path.replaceAll('\\', '/').replaceAll(RegExp(r'^/+'), '');
+  final slash = normalized.lastIndexOf('/');
+  final parent = slash < 0 ? '' : normalized.substring(0, slash);
+  final name = slash < 0 ? normalized : normalized.substring(slash + 1);
+  if (name.isEmpty) {
+    return null;
+  }
+
+  final entries = await _tryListPath(api, projectId, parent);
+  if (entries == null) {
+    return null;
+  }
+
+  for (final entry in entries) {
+    if (entry.isDirectory) {
+      continue;
+    }
+    final entryPath = entry.path.replaceAll('\\', '/');
+    final entryName = entry.name.replaceAll('\\', '/');
+    if (entryPath.toLowerCase() == normalized.toLowerCase() ||
+        entryName.toLowerCase() == name.toLowerCase()) {
+      return entry.path;
+    }
+  }
+
+  return null;
+}
+
+Future<void> _openFilePreview({
+  required BuildContext context,
+  required NavigatorState navigator,
+  required CodexMobileApi api,
+  required String projectId,
+  required String path,
+  required bool binary,
+}) async {
+  if (binary) {
+    final downloaded = await api.downloadFile(projectId: projectId, path: path);
+    final preview = FilePreview(
+      path: downloaded.path,
+      content: '',
+      language: downloaded.language,
+      contentType: downloaded.contentType,
+    );
+    if (!context.mounted) {
+      return;
+    }
+    await navigator.push(
+      MaterialPageRoute(
+        builder: (_) =>
+            FilePreviewScreen(preview: preview, downloadedFile: downloaded),
+      ),
+    );
+    return;
+  }
+
+  final preview = await api.readFile(projectId: projectId, path: path);
+  if (!context.mounted) {
+    return;
+  }
+  await navigator.push(
+    MaterialPageRoute(builder: (_) => FilePreviewScreen(preview: preview)),
+  );
 }
 
 bool _looksLikeBinaryPreview(String path) {

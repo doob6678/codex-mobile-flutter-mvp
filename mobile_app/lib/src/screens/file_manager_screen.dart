@@ -141,7 +141,7 @@ class _ProjectTree extends StatelessWidget {
   }
 }
 
-class _FileTreeNode extends StatelessWidget {
+class _FileTreeNode extends StatefulWidget {
   const _FileTreeNode({
     required this.api,
     required this.projectId,
@@ -155,30 +155,40 @@ class _FileTreeNode extends StatelessWidget {
   final int depth;
 
   @override
+  State<_FileTreeNode> createState() => _FileTreeNodeState();
+}
+
+class _FileTreeNodeState extends State<_FileTreeNode> {
+  bool _opening = false;
+
+  @override
   Widget build(BuildContext context) {
     final padding = EdgeInsetsDirectional.only(
-      start: 8.0 + depth * 16.0,
+      start: 8.0 + widget.depth * 16.0,
       end: 8,
       top: 4,
       bottom: 4,
     );
 
-    if (entry.isDirectory) {
+    if (widget.entry.isDirectory) {
       return Padding(
         padding: padding,
         child: ExpansionTile(
-          key: PageStorageKey('folder:${entry.path}'),
+          key: PageStorageKey('folder:${widget.entry.path}'),
           initiallyExpanded: false,
           tilePadding: const EdgeInsets.symmetric(horizontal: 8),
           leading: const Icon(Icons.folder_outlined),
           title: Text(
-            entry.name,
+            widget.entry.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           children: [
             FutureBuilder<List<CodexFile>>(
-              future: api.listFiles(projectId: projectId, path: entry.path),
+              future: widget.api.listFiles(
+                projectId: widget.projectId,
+                path: widget.entry.path,
+              ),
               builder: (context, snapshot) {
                 final children = snapshot.data;
                 if (children == null) {
@@ -197,10 +207,10 @@ class _FileTreeNode extends StatelessWidget {
                   children: [
                     for (final child in children)
                       _FileTreeNode(
-                        api: api,
-                        projectId: projectId,
+                        api: widget.api,
+                        projectId: widget.projectId,
                         entry: child,
-                        depth: depth + 1,
+                        depth: widget.depth + 1,
                       ),
                   ],
                 );
@@ -218,67 +228,84 @@ class _FileTreeNode extends StatelessWidget {
         child: ListTile(
           dense: true,
           leading: Icon(
-            entry.isImageFile
+            widget.entry.isImageFile
                 ? Icons.image_outlined
-                : entry.isHtmlFile
+                : widget.entry.isHtmlFile
                 ? Icons.html_outlined
-                : entry.isPdfFile
+                : widget.entry.isPdfFile
                 ? Icons.picture_as_pdf_outlined
                 : Icons.description_outlined,
           ),
-          title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () async {
-            final navigator = Navigator.of(context);
-            try {
-              if (entry.isImageFile || entry.isPdfFile) {
-                final downloaded = await api.downloadFile(
-                  projectId: projectId,
-                  path: entry.path,
-                );
-                final preview = FilePreview(
-                  path: downloaded.path,
-                  content: '',
-                  language: downloaded.language,
-                  contentType: downloaded.contentType,
-                );
-                if (!context.mounted) {
-                  return;
-                }
-                await navigator.push(
-                  MaterialPageRoute(
-                    builder: (_) => FilePreviewScreen(
-                      preview: preview,
-                      downloadedFile: downloaded,
-                    ),
-                  ),
-                );
-                return;
-              }
-
-              final preview = await api.readFile(
-                projectId: projectId,
-                path: entry.path,
-              );
-              if (!context.mounted) {
-                return;
-              }
-              await navigator.push(
-                MaterialPageRoute(
-                  builder: (_) => FilePreviewScreen(preview: preview),
-                ),
-              );
-            } catch (error) {
-              if (!context.mounted) {
-                return;
-              }
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(error.toString())));
-            }
-          },
+          title: Text(
+            widget.entry.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: _opening
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: _opening ? null : () => _openFile(context),
         ),
       ),
     );
+  }
+
+  Future<void> _openFile(BuildContext context) async {
+    if (_opening) {
+      return;
+    }
+
+    final navigator = Navigator.of(context);
+    setState(() => _opening = true);
+    try {
+      if (widget.entry.isImageFile || widget.entry.isPdfFile) {
+        final downloaded = await widget.api.downloadFile(
+          projectId: widget.projectId,
+          path: widget.entry.path,
+        );
+        final preview = FilePreview(
+          path: downloaded.path,
+          content: '',
+          language: downloaded.language,
+          contentType: downloaded.contentType,
+        );
+        if (!context.mounted) {
+          return;
+        }
+        await navigator.push(
+          MaterialPageRoute(
+            builder: (_) =>
+                FilePreviewScreen(preview: preview, downloadedFile: downloaded),
+          ),
+        );
+        return;
+      }
+
+      final preview = await widget.api.readFile(
+        projectId: widget.projectId,
+        path: widget.entry.path,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      await navigator.push(
+        MaterialPageRoute(builder: (_) => FilePreviewScreen(preview: preview)),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() => _opening = false);
+      }
+    }
   }
 }
