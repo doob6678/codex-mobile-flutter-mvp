@@ -570,7 +570,7 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
             children: [
               ListView(
                 controller: _messagesScrollController,
-                padding: const EdgeInsets.only(bottom: 52),
+                padding: const EdgeInsets.only(bottom: 120),
                 children: [
                   if (_visibleMessages(_detail.messages).isEmpty)
                     SelectableText(_detail.thread.preview)
@@ -1031,7 +1031,7 @@ class _BridgeConversationDetailViewState
             children: [
               ListView(
                 controller: _messagesScrollController,
-                padding: const EdgeInsets.only(bottom: 52),
+                padding: const EdgeInsets.only(bottom: 120),
                 children: [
                   if (detail.messages.isEmpty)
                     const SelectableText('这条 Bridge 会话还没有消息。')
@@ -1725,7 +1725,7 @@ String linkifyConversationFileReferences(String source) {
   }
 
   final pattern = RegExp(
-    r'(^|[\s:：])([^\s\[\]()<>"`]+(?:\.html|\.htm|\.md|\.markdown|\.pdf|\.png|\.jpg|\.jpeg|\.webp|\.gif|\.txt|_assets))(?=$|[\s，。；;、])',
+    r'(^|[\s:：])([^\s\[\]()<>"`]+(?:\.html|\.htm|\.md|\.markdown|\.doc|\.docx|\.ppt|\.pptx|\.pdf|\.png|\.jpg|\.jpeg|\.webp|\.gif|\.txt|_assets))(?=$|[\s，。；;、])',
     caseSensitive: false,
     multiLine: true,
   );
@@ -1877,6 +1877,10 @@ bool _hasKnownFileExtension(String path) {
       lower.endsWith('.htm') ||
       lower.endsWith('.md') ||
       lower.endsWith('.markdown') ||
+      lower.endsWith('.doc') ||
+      lower.endsWith('.docx') ||
+      lower.endsWith('.ppt') ||
+      lower.endsWith('.pptx') ||
       lower.endsWith('.pdf') ||
       lower.endsWith('.png') ||
       lower.endsWith('.jpg') ||

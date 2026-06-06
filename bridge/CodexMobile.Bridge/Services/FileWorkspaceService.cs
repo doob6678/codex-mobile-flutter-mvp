@@ -1,6 +1,12 @@
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using CodexMobile.Bridge.Models;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Presentation;
+using A = DocumentFormat.OpenXml.Drawing;
+using NPOI.XWPF.Extractor;
+using NPOI.XWPF.UserModel;
 
 namespace CodexMobile.Bridge.Services;
 
@@ -10,6 +16,10 @@ public sealed class FileWorkspaceService
     {
         [".md"] = "text/markdown; charset=utf-8",
         [".markdown"] = "text/markdown; charset=utf-8",
+        [".doc"] = "application/msword",
+        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        [".ppt"] = "application/vnd.ms-powerpoint",
+        [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         [".html"] = "text/html; charset=utf-8",
         [".htm"] = "text/html; charset=utf-8",
         [".txt"] = "text/plain; charset=utf-8",
@@ -57,7 +67,7 @@ public sealed class FileWorkspaceService
             throw new FileNotFoundException("File not found.", path);
         }
 
-        var content = File.ReadAllText(path, Encoding.UTF8);
+        var content = ReadPreviewText(path);
         var info = new FileInfo(path);
         return new FileReadResponse(
             projectId,
@@ -140,6 +150,8 @@ public sealed class FileWorkspaceService
     {
         return Path.GetExtension(path).ToLowerInvariant() switch
         {
+            ".doc" or ".docx" => "document",
+            ".ppt" or ".pptx" => "presentation",
             ".md" or ".markdown" => "markdown",
             ".dart" => "dart",
             ".cs" => "csharp",
@@ -158,5 +170,223 @@ public sealed class FileWorkspaceService
         return ContentTypes.TryGetValue(extension, out var contentType)
             ? contentType
             : "application/octet-stream";
+    }
+
+    private static string ReadPreviewText(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".docx" => ExtractDocxText(path),
+            ".doc" => ExtractDocText(path),
+            ".pptx" => ExtractPptxText(path),
+            ".ppt" => ExtractPptText(path),
+            _ => File.ReadAllText(path, Encoding.UTF8),
+        };
+    }
+
+    private static string ExtractDocxText(string path)
+    {
+        using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var document = new XWPFDocument(fs);
+        try
+        {
+            var extractor = new XWPFWordExtractor(document);
+            return extractor.Text.Trim();
+        }
+        finally
+        {
+            document.Close();
+        }
+    }
+
+    private static string ExtractDocText(string path)
+    {
+        return ExecuteWordCom(path, document => Convert.ToString(document.Content.Text)?.Trim() ?? string.Empty);
+    }
+
+    private static string ExtractPptxText(string path)
+    {
+        using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var presentation = PresentationDocument.Open(fs, false);
+        var builder = new StringBuilder();
+        var presentationPart = presentation.PresentationPart;
+        if (presentationPart?.Presentation?.SlideIdList == null)
+        {
+            return string.Empty;
+        }
+
+        var slideNumber = 0;
+        foreach (var slideId in presentationPart.Presentation.SlideIdList.Elements<SlideId>())
+        {
+            if (presentationPart.GetPartById(slideId.RelationshipId!) is not SlidePart slidePart)
+            {
+                continue;
+            }
+
+            slideNumber++;
+            AppendLine(builder, $"[Slide {slideNumber}]");
+            foreach (var text in slidePart.Slide.Descendants<A.Text>())
+            {
+                AppendLine(builder, text.Text);
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static string ExtractPptText(string path)
+    {
+        return ExecutePowerPointCom(path, presentation =>
+        {
+            var builder = new StringBuilder();
+            dynamic slides = presentation.Slides;
+            for (var i = 1; i <= slides.Count; i++)
+            {
+                dynamic slide = slides[i];
+                AppendLine(builder, $"[Slide {i}]");
+                dynamic shapes = slide.Shapes;
+                for (var j = 1; j <= shapes.Count; j++)
+                {
+                    dynamic shape = shapes[j];
+                    try
+                    {
+                        if (Convert.ToInt32(shape.HasTextFrame) == 0)
+                        {
+                            continue;
+                        }
+
+                        dynamic textFrame = shape.TextFrame;
+                        if (textFrame == null || Convert.ToInt32(textFrame.HasText) == 0)
+                        {
+                            continue;
+                        }
+
+                        AppendLine(builder, Convert.ToString(textFrame.TextRange.Text));
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            return builder.ToString().Trim();
+        });
+    }
+
+    private static void AppendLine(StringBuilder builder, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            builder.AppendLine(value.Trim());
+        }
+    }
+
+    private static string ExecuteWordCom(string path, Func<dynamic, string> extract)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("DOC preview requires Windows and Microsoft Word.");
+        }
+
+        var appType = Type.GetTypeFromProgID("Word.Application")
+            ?? throw new PlatformNotSupportedException("Microsoft Word is not installed for DOC preview.");
+
+        dynamic? app = null;
+        dynamic? document = null;
+        dynamic? documents = null;
+        try
+        {
+            app = Activator.CreateInstance(appType)
+                ?? throw new InvalidOperationException("Failed to start Microsoft Word.");
+            app.Visible = false;
+            app.DisplayAlerts = 0;
+            documents = app.Documents;
+            document = documents.Open(path, ReadOnly: true, Visible: false, AddToRecentFiles: false);
+            return extract(document);
+        }
+        finally
+        {
+            try
+            {
+                document?.Close(false);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                app?.Quit();
+            }
+            catch
+            {
+            }
+
+            ReleaseComObject(document);
+            ReleaseComObject(documents);
+            ReleaseComObject(app);
+        }
+    }
+
+    private static string ExecutePowerPointCom(string path, Func<dynamic, string> extract)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("PPT preview requires Windows and Microsoft PowerPoint.");
+        }
+
+        var appType = Type.GetTypeFromProgID("PowerPoint.Application")
+            ?? throw new PlatformNotSupportedException("Microsoft PowerPoint is not installed for PPT preview.");
+
+        dynamic? app = null;
+        dynamic? presentations = null;
+        dynamic? presentation = null;
+        try
+        {
+            app = Activator.CreateInstance(appType)
+                ?? throw new InvalidOperationException("Failed to start Microsoft PowerPoint.");
+            app.Visible = false;
+            presentations = app.Presentations;
+            presentation = presentations.Open(path, ReadOnly: true, Untitled: false, WithWindow: false);
+            return extract(presentation);
+        }
+        finally
+        {
+            try
+            {
+                presentation?.Close();
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                app?.Quit();
+            }
+            catch
+            {
+            }
+
+            ReleaseComObject(presentation);
+            ReleaseComObject(presentations);
+            ReleaseComObject(app);
+        }
+    }
+
+    private static void ReleaseComObject(object? value)
+    {
+        if (value is null || !Marshal.IsComObject(value))
+        {
+            return;
+        }
+
+        try
+        {
+            Marshal.FinalReleaseComObject(value);
+        }
+        catch
+        {
+        }
     }
 }

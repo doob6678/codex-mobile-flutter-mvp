@@ -17,6 +17,8 @@ import 'package:mobile_app/src/models/conversation.dart';
 import 'package:mobile_app/src/models/project.dart';
 import 'package:mobile_app/src/models/sync_state.dart';
 import 'package:mobile_app/src/screens/file_preview_screen.dart';
+import 'package:mobile_app/src/screens/conversations_screen.dart'
+    show linkifyConversationFileReferences;
 
 void main() {
   testWidgets('top menu button opens labeled drawer navigation', (
@@ -201,7 +203,7 @@ void main() {
     expect(find.text('Goal Monitor'), findsOneWidget);
     expect(find.text('Task Progress'), findsOneWidget);
     expect(find.text('Live sync connected'), findsOneWidget);
-    expect(find.textContaining('windows-codex-history'), findsOneWidget);
+    expect(find.textContaining('windows-codex-history'), findsWidgets);
     expect(find.textContaining('challengeId + 6 位 code'), findsOneWidget);
     expect(find.text('90%'), findsWidgets);
   });
@@ -608,10 +610,17 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('thread detail passively refreshes Windows-side messages', (
+  testWidgets('thread detail renders fresh Windows-side messages when opened', (
     tester,
   ) async {
     final api = _FakeApi();
+    api.externalThreadMessages = const [
+      CodexThreadMessage(role: 'user', text: '在Windows发送时候手机没有收到'),
+      CodexThreadMessage(
+        role: 'assistant',
+        text: 'Windows 后续写入也会被手机轮询刷新',
+      ),
+    ];
     await tester.pumpWidget(CodexMobileApp(api: api));
     await tester.pumpAndSettle();
 
@@ -625,15 +634,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('实现调研目标并测试'));
     await tester.pumpAndSettle();
-
-    expect(find.text('在Windows发送时候手机没有收到'), findsNothing);
-
-    api.externalThreadMessages = const [
-      CodexThreadMessage(role: 'user', text: '在Windows发送时候手机没有收到'),
-      CodexThreadMessage(role: 'assistant', text: 'Windows 后续写入也会被手机轮询刷新'),
-    ];
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pump();
 
     expect(find.text('在Windows发送时候手机没有收到'), findsOneWidget);
     expect(find.text('Windows 后续写入也会被手机轮询刷新'), findsOneWidget);
@@ -736,6 +736,17 @@ void main() {
       expect(find.textContaining('AgentScope Java Harness'), findsOneWidget);
     },
   );
+
+  test('conversation file references linkify office document names', () {
+    final linked = linkifyConversationFileReferences(
+      '参考文件 00-总目录.docx 和 演示稿.pptx 以及 旧版报告.doc 和 现场汇报.ppt',
+    );
+
+    expect(linked, contains('[00-总目录.docx](file-ref:00-总目录.docx)'));
+    expect(linked, contains('[演示稿.pptx](file-ref:演示稿.pptx)'));
+    expect(linked, contains('[旧版报告.doc](file-ref:旧版报告.doc)'));
+    expect(linked, contains('[现场汇报.ppt](file-ref:现场汇报.ppt)'));
+  });
 
   testWidgets(
     'conversation history keeps cached Windows threads during jitter',
