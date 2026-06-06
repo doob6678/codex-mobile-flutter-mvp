@@ -15,6 +15,7 @@ public sealed class SyncStateService
     private readonly object gate = new();
     private readonly Dictionary<string, GoalRecord> goals = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CodexTaskRecord> tasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CodexTurnJobRecord> jobs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<MobileUserMessageRecord>> mobileUserMessages = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CodexSyncEvent> events = new();
     private readonly ConcurrentDictionary<Guid, Channel<CodexSyncSnapshot>> subscribers = new();
@@ -61,6 +62,7 @@ public sealed class SyncStateService
                 CurrentGoalUnsafe(),
                 goals.Values.OrderByDescending(goal => goal.UpdatedAt).ToArray(),
                 tasks.Values.OrderByDescending(task => task.UpdatedAt).ToArray(),
+                jobs.Values.OrderByDescending(job => job.UpdatedAt).ToArray(),
                 events.ToArray(),
                 clock.Now);
         }
@@ -178,6 +180,125 @@ public sealed class SyncStateService
         return updated;
     }
 
+    public CodexTurnJobRecord RecordTurnJobAccepted(
+        string jobId,
+        string? threadId,
+        string? conversationId,
+        string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("Job id is required.", nameof(jobId));
+        }
+
+        var now = clock.Now;
+        var promptPreview = CreatePromptPreview(prompt);
+        CodexTurnJobRecord job;
+        lock (gate)
+        {
+            job = new CodexTurnJobRecord(
+                jobId.Trim(),
+                CleanNullable(threadId),
+                CleanNullable(conversationId),
+                CodexTurnJobStatus.Pending,
+                promptPreview,
+                "Bridge 已收到手机消息，正在后台投递到 Windows Codex",
+                now,
+                now,
+                null,
+                null,
+                null,
+                null);
+            jobs[job.Id] = job;
+            events.Add(new CodexSyncEvent(
+                "codex.turn.accepted",
+                job.Id,
+                now,
+                CreateJobPayload(job)));
+            TrimEventsUnsafe();
+        }
+
+        PublishSnapshot();
+        return job;
+    }
+
+    public CodexTurnJobRecord RecordTurnJobRunning(string jobId, string message)
+    {
+        return UpdateTurnJob(
+            jobId,
+            CodexTurnJobStatus.Running,
+            message,
+            error: null,
+            updateStartedAt: true,
+            updateCompletedAt: false,
+            updateFailedAt: false);
+    }
+
+    public CodexTurnJobRecord RecordTurnJobCompleted(string jobId, string message)
+    {
+        return UpdateTurnJob(
+            jobId,
+            CodexTurnJobStatus.Completed,
+            message,
+            error: null,
+            updateStartedAt: false,
+            updateCompletedAt: true,
+            updateFailedAt: false);
+    }
+
+    public CodexTurnJobRecord RecordTurnJobFailed(string jobId, string message, string error)
+    {
+        return UpdateTurnJob(
+            jobId,
+            CodexTurnJobStatus.Failed,
+            message,
+            error,
+            updateStartedAt: false,
+            updateCompletedAt: false,
+            updateFailedAt: true);
+    }
+
+    public CodexTurnJobRecord BindTurnJobThread(string jobId, string? threadId)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("Job id is required.", nameof(jobId));
+        }
+
+        if (string.IsNullOrWhiteSpace(threadId))
+        {
+            throw new ArgumentException("Thread id is required.", nameof(threadId));
+        }
+
+        var now = clock.Now;
+        CodexTurnJobRecord updated;
+        lock (gate)
+        {
+            var id = jobId.Trim();
+            if (!jobs.TryGetValue(id, out var existing))
+            {
+                throw new KeyNotFoundException($"Turn job '{id}' was not found.");
+            }
+
+            updated = existing with
+            {
+                ThreadId = threadId.Trim(),
+                UpdatedAt = now,
+            };
+            updated = ApplyLatestTerminalEventUnsafe(updated);
+            jobs[updated.Id] = updated;
+            events.Add(new CodexSyncEvent(
+                "codex.turn.thread.bound",
+                updated.Id,
+                now,
+                CreateJobPayload(updated)));
+            TrimEventsUnsafe();
+        }
+
+        PublishSnapshot();
+        return updated;
+    }
+
     public MobileUserMessageRecord RecordMobileUserMessage(string threadId, string text, string? jobId = null)
     {
         if (string.IsNullOrWhiteSpace(threadId))
@@ -276,6 +397,7 @@ public sealed class SyncStateService
         lock (gate)
         {
             events.Add(syncEvent);
+            UpdateJobFromEventUnsafe(syncEvent);
             TrimEventsUnsafe();
         }
 
@@ -385,6 +507,189 @@ public sealed class SyncStateService
     {
         var redacted = ApiKeyAssignment.Replace(message, "OPENAI_API_KEY=[REDACTED]");
         return SecretToken.Replace(redacted, "[REDACTED]");
+    }
+
+    private CodexTurnJobRecord UpdateTurnJob(
+        string jobId,
+        CodexTurnJobStatus status,
+        string message,
+        string? error,
+        bool updateStartedAt,
+        bool updateCompletedAt,
+        bool updateFailedAt)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("Job id is required.", nameof(jobId));
+        }
+
+        var now = clock.Now;
+        CodexTurnJobRecord updated;
+        lock (gate)
+        {
+            var id = jobId.Trim();
+            if (!jobs.TryGetValue(id, out var existing))
+            {
+                existing = new CodexTurnJobRecord(
+                    id,
+                    null,
+                    null,
+                    CodexTurnJobStatus.Pending,
+                    "",
+                    "",
+                    now,
+                    now,
+                    null,
+                    null,
+                    null,
+                    null);
+            }
+
+            if (!existing.IsActive && status is CodexTurnJobStatus.Pending or CodexTurnJobStatus.Running)
+            {
+                return existing;
+            }
+
+            updated = existing with
+            {
+                Status = status,
+                LastMessage = Redact(message.Trim()),
+                UpdatedAt = now,
+                StartedAt = updateStartedAt ? now : existing.StartedAt,
+                CompletedAt = updateCompletedAt ? now : existing.CompletedAt,
+                FailedAt = updateFailedAt ? now : existing.FailedAt,
+                Error = string.IsNullOrWhiteSpace(error) ? existing.Error : Redact(error.Trim()),
+            };
+            jobs[updated.Id] = updated;
+            events.Add(new CodexSyncEvent(
+                EventTypeForJobStatus(status),
+                updated.Id,
+                now,
+                CreateJobPayload(updated)));
+            TrimEventsUnsafe();
+        }
+
+        PublishSnapshot();
+        return updated;
+    }
+
+    private void UpdateJobFromEventUnsafe(CodexSyncEvent syncEvent)
+    {
+        var method = ReadPayloadText(syncEvent.Payload, "method");
+        var isCompleted = string.Equals(method, "turn/completed", StringComparison.OrdinalIgnoreCase);
+        var isFailed = string.Equals(method, "turn/failed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(method, "turn/cancelled", StringComparison.OrdinalIgnoreCase);
+        if (!isCompleted && !isFailed)
+        {
+            return;
+        }
+
+        var threadId = ReadPayloadText(syncEvent.Payload, "threadId");
+        if (string.IsNullOrWhiteSpace(threadId))
+        {
+            return;
+        }
+
+        foreach (var job in jobs.Values
+            .Where(job => job.IsActive && string.Equals(job.ThreadId, threadId, StringComparison.OrdinalIgnoreCase))
+            .ToArray())
+        {
+            jobs[job.Id] = ApplyTerminalEvent(job, syncEvent, isCompleted);
+        }
+    }
+
+    private CodexTurnJobRecord ApplyLatestTerminalEventUnsafe(CodexTurnJobRecord job)
+    {
+        if (!job.IsActive || string.IsNullOrWhiteSpace(job.ThreadId))
+        {
+            return job;
+        }
+
+        var terminalEvent = events
+            .Where(syncEvent =>
+            {
+                var method = ReadPayloadText(syncEvent.Payload, "method");
+                var isCompleted = string.Equals(method, "turn/completed", StringComparison.OrdinalIgnoreCase);
+                var isFailed = string.Equals(method, "turn/failed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(method, "turn/cancelled", StringComparison.OrdinalIgnoreCase);
+                return (isCompleted || isFailed)
+                    && string.Equals(ReadPayloadText(syncEvent.Payload, "threadId"), job.ThreadId, StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(syncEvent => syncEvent.Timestamp)
+            .FirstOrDefault();
+
+        if (terminalEvent is null)
+        {
+            return job;
+        }
+
+        return ApplyTerminalEvent(
+            job,
+            terminalEvent,
+            string.Equals(ReadPayloadText(terminalEvent.Payload, "method"), "turn/completed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static CodexTurnJobRecord ApplyTerminalEvent(
+        CodexTurnJobRecord job,
+        CodexSyncEvent syncEvent,
+        bool isCompleted)
+    {
+        var message = ReadPayloadText(syncEvent.Payload, "message");
+        var isFailed = !isCompleted;
+        return job with
+        {
+            Status = isCompleted ? CodexTurnJobStatus.Completed : CodexTurnJobStatus.Failed,
+            LastMessage = string.IsNullOrWhiteSpace(message)
+                ? isCompleted
+                    ? "Windows Codex 已完成本轮回复"
+                    : "Windows Codex 本轮处理失败"
+                : Redact(message.Trim()),
+            UpdatedAt = syncEvent.Timestamp,
+            CompletedAt = isCompleted ? syncEvent.Timestamp : job.CompletedAt,
+            FailedAt = isFailed ? syncEvent.Timestamp : job.FailedAt,
+            Error = isFailed ? Redact(ReadPayloadText(syncEvent.Payload, "error")) : job.Error,
+        };
+    }
+
+    private static IReadOnlyDictionary<string, object?> CreateJobPayload(CodexTurnJobRecord job)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["jobId"] = job.Id,
+            ["threadId"] = job.ThreadId,
+            ["conversationId"] = job.ConversationId,
+            ["status"] = job.Status.ToString(),
+            ["promptPreview"] = job.PromptPreview,
+            ["message"] = job.LastMessage,
+            ["error"] = job.Error,
+        };
+    }
+
+    private static string EventTypeForJobStatus(CodexTurnJobStatus status)
+    {
+        return status switch
+        {
+            CodexTurnJobStatus.Running => "codex.turn.dispatch.starting",
+            CodexTurnJobStatus.Completed => "codex.turn.dispatch.completed",
+            CodexTurnJobStatus.Failed => "codex.turn.dispatch.failed",
+            _ => "codex.turn.accepted",
+        };
+    }
+
+    private static string CreatePromptPreview(string prompt)
+    {
+        var text = Redact((prompt ?? "").Trim());
+        return text.Length <= 160 ? text : $"{text[..160]}...";
+    }
+
+    private static string? CleanNullable(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string ReadPayloadText(IReadOnlyDictionary<string, object?> payload, string key)
+    {
+        return payload.TryGetValue(key, out var value) ? value?.ToString() ?? "" : "";
     }
 
     private void PublishSnapshot()

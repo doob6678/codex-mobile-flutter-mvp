@@ -5,24 +5,29 @@ namespace CodexMobile.Bridge.Services;
 public sealed class ConversationService
 {
     private readonly IClock clock;
+    private readonly ProjectStore? projects;
+    private readonly bool enforceProjectRoots;
     private readonly object gate = new();
     private readonly Dictionary<string, ConversationRecord> conversations = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ConversationMessage> messages = new();
     private readonly List<ApprovalRecord> approvals = new();
 
-    public ConversationService(IClock clock)
+    public ConversationService(IClock clock, ProjectStore? projects = null, bool enforceProjectRoots = false)
     {
         this.clock = clock;
+        this.projects = projects;
+        this.enforceProjectRoots = enforceProjectRoots;
     }
 
     public ConversationRecord Create(string title, string projectId, string workingDirectory)
     {
         var now = clock.Now;
+        var safeWorkingDirectory = ResolveWorkingDirectory(projectId, workingDirectory);
         var conversation = new ConversationRecord(
             $"conv_{Guid.NewGuid():N}",
             string.IsNullOrWhiteSpace(title) ? "New task" : title.Trim(),
             projectId,
-            workingDirectory,
+            safeWorkingDirectory,
             null,
             now,
             now);
@@ -145,5 +150,20 @@ public sealed class ConversationService
         {
             return approvals.OrderByDescending(approval => approval.CreatedAt).ToArray();
         }
+    }
+
+    private string ResolveWorkingDirectory(string projectId, string workingDirectory)
+    {
+        if (!enforceProjectRoots)
+        {
+            return workingDirectory;
+        }
+
+        if (projects is null)
+        {
+            throw new InvalidOperationException("Project store is required when conversation root enforcement is enabled.");
+        }
+
+        return projects.ResolveProjectPath(projectId, string.IsNullOrWhiteSpace(workingDirectory) ? "." : workingDirectory);
     }
 }

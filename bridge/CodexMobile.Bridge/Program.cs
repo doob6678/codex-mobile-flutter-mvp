@@ -58,15 +58,25 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<FileWorkspaceService>();
 builder.Services.AddSingleton<PairingService>();
 builder.Services.AddSingleton<AuditLog>();
-builder.Services.AddSingleton<CommandService>();
-builder.Services.AddSingleton<ConversationService>();
+builder.Services.AddSingleton(sp => new CommandService(
+    sp.GetRequiredService<AuditLog>(),
+    sp.GetRequiredService<ProjectStore>()));
+builder.Services.AddSingleton(sp => new ConversationService(
+    sp.GetRequiredService<IClock>(),
+    sp.GetRequiredService<ProjectStore>(),
+    enforceProjectRoots: true));
 builder.Services.AddSingleton<ConversationCodexRelayService>();
 builder.Services.AddSingleton<NetworkInterfaceService>();
 builder.Services.AddSingleton<ConnectPageService>();
 builder.Services.AddSingleton<SyncStateService>();
 builder.Services.AddSingleton<LocalCodexHistoryService>();
 builder.Services.AddSingleton<ICodexAppServerClient, StdioCodexAppServerClient>();
-builder.Services.AddSingleton<CodexAppServerGateway>();
+builder.Services.AddSingleton(sp => new CodexAppServerGateway(
+    sp.GetRequiredService<ICodexAppServerClient>(),
+    sp.GetRequiredService<LocalCodexHistoryService>(),
+    sp.GetRequiredService<SyncStateService>(),
+    sp.GetRequiredService<ProjectStore>(),
+    enforceProjectRoots: true));
 builder.Services.AddSingleton(sp =>
 {
     var root = builder.Configuration["RepositoryRoot"] ?? Directory.GetCurrentDirectory();
@@ -234,58 +244,22 @@ app.MapPost("/codex/turns", (StartCodexTurnRequest request, CodexAppServerGatewa
         sync.RecordMobileUserMessage(request.ThreadId, request.Prompt, jobId);
     }
 
-    sync.RecordEvent(
-        "codex.turn.accepted",
-        jobId,
-        new Dictionary<string, object?>
-        {
-            ["jobId"] = jobId,
-            ["threadId"] = request.ThreadId,
-            ["promptChars"] = request.Prompt?.Length ?? 0,
-            ["message"] = "Bridge 已收到手机消息，正在后台投递到 Windows Codex",
-        });
+    sync.RecordTurnJobAccepted(jobId, request.ThreadId, null, request.Prompt ?? "");
     _ = Task.Run(async () =>
     {
         var started = DateTimeOffset.UtcNow;
         try
         {
             Console.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] dispatch starting");
-            sync.RecordEvent(
-                "codex.turn.dispatch.starting",
-                jobId,
-                new Dictionary<string, object?>
-                {
-                    ["jobId"] = jobId,
-                    ["threadId"] = request.ThreadId,
-                    ["message"] = "Bridge 正在调用 Windows Codex app-server",
-                });
+            sync.RecordTurnJobRunning(jobId, "Bridge 正在调用 Windows Codex app-server");
             await codex.StartTurnAsync(request, CancellationToken.None);
             Console.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] dispatch completed elapsedMs={(DateTimeOffset.UtcNow - started).TotalMilliseconds:0}");
-            sync.RecordEvent(
-                "codex.turn.dispatch.completed",
-                jobId,
-                new Dictionary<string, object?>
-                {
-                    ["jobId"] = jobId,
-                    ["threadId"] = request.ThreadId,
-                    ["elapsedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
-                    ["message"] = "Bridge 已完成投递，手机将继续刷新同一线程历史",
-                });
+            sync.RecordTurnJobRunning(jobId, "Bridge 已完成投递，正在等待 Windows Codex 完成本轮回复");
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] dispatch failed elapsedMs={(DateTimeOffset.UtcNow - started).TotalMilliseconds:0}: {ex}");
-            sync.RecordEvent(
-                "codex.turn.dispatch.failed",
-                jobId,
-                new Dictionary<string, object?>
-                {
-                    ["jobId"] = jobId,
-                    ["threadId"] = request.ThreadId,
-                    ["elapsedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
-                    ["error"] = ex.Message,
-                    ["message"] = "Bridge 投递失败，详情见 Windows 控制台日志",
-                });
+            sync.RecordTurnJobFailed(jobId, "Bridge 投递失败，详情见 Windows 控制台日志", ex.Message);
         }
     });
 
@@ -324,8 +298,11 @@ app.MapPost("/pairing/tokens/{fingerprint}/revoke", (string fingerprint, DeviceT
 app.MapGet("/projects", (ProjectStore projects) => Results.Ok(projects.ListProjects()));
 app.MapPost("/projects", (AddProjectRequest request, ProjectStore projects) =>
 {
-    var project = projects.AddProject(request.Name, request.RootPath);
-    return Results.Created($"/projects/{project.Id}", project);
+    return BridgeEndpointHelpers.SafeBridgeResult(() =>
+    {
+        var project = projects.AddProject(request.Name, request.RootPath);
+        return Results.Created($"/projects/{project.Id}", project);
+    });
 });
 
 app.MapGet("/files/list", (string projectId, string? path, FileWorkspaceService files) =>
@@ -337,14 +314,17 @@ app.MapGet("/files/download", (string projectId, string path, FileWorkspaceServi
 app.MapGet("/files/hash", (string projectId, string path, FileWorkspaceService files) =>
     FileEndpointHelpers.SafeFileResult(() => files.Hash(projectId, path)));
 app.MapPost("/files/patch", (FilePatchRequest request, FileWorkspaceService files) =>
-    Results.Ok(files.ApplyPatch(request)));
+    FileEndpointHelpers.SafeFileResult(() => files.ApplyPatch(request)));
 
 app.MapGet("/conversations", (ConversationService conversations) =>
     Results.Ok(ConversationEndpointHelpers.ListSummaries(conversations)));
 app.MapPost("/conversations", (CreateConversationRequest request, ConversationService conversations) =>
 {
-    var conversation = conversations.Create(request.Title, request.ProjectId, request.WorkingDirectory);
-    return Results.Created($"/conversations/{conversation.Id}", conversation);
+    return BridgeEndpointHelpers.SafeBridgeResult(() =>
+    {
+        var conversation = conversations.Create(request.Title, request.ProjectId, request.WorkingDirectory);
+        return Results.Created($"/conversations/{conversation.Id}", conversation);
+    });
 });
 app.MapGet("/conversations/{id}", async (string id, ConversationService conversations, CodexAppServerGateway codex, CancellationToken cancellationToken) =>
     Results.Ok(await ConversationEndpointHelpers.ReadDetailAsync(id, conversations, codex, cancellationToken)));
@@ -358,58 +338,27 @@ app.MapPost("/conversations/{id}/messages", async (string id, AddMessageRequest 
             conversations.AddMessage(id, "user", content);
             var jobId = $"conversation_job_{Guid.NewGuid():N}";
             Console.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] accepted conversation message conversationId={id} chars={content.Length}");
-            sync.RecordEvent(
-                "codex.conversation.accepted",
-                jobId,
-                new Dictionary<string, object?>
-                {
-                    ["jobId"] = jobId,
-                    ["conversationId"] = id,
-                    ["promptChars"] = content.Length,
-                    ["message"] = "Bridge 会话消息已进入后台发送队列",
-                });
+            sync.RecordTurnJobAccepted(jobId, null, id, content);
             _ = Task.Run(async () =>
             {
                 var started = DateTimeOffset.UtcNow;
                 try
                 {
                     Console.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] conversation dispatch starting");
-                    sync.RecordEvent(
-                        "codex.conversation.dispatch.starting",
-                        jobId,
-                        new Dictionary<string, object?>
-                        {
-                            ["jobId"] = jobId,
-                            ["conversationId"] = id,
-                            ["message"] = "Bridge 正在把会话消息投递到 Windows Codex",
-                        });
-                    await relay.SendUserMessageAsync(id, content, CancellationToken.None, recordLocalMessage: false);
+                    sync.RecordTurnJobRunning(jobId, "Bridge 正在把会话消息投递到 Windows Codex");
+                    var snapshot = await relay.SendUserMessageAsync(id, content, CancellationToken.None, recordLocalMessage: false);
+                    if (!string.IsNullOrWhiteSpace(snapshot.Conversation.CodexThreadId))
+                    {
+                        sync.BindTurnJobThread(jobId, snapshot.Conversation.CodexThreadId);
+                    }
+
                     Console.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] conversation dispatch completed elapsedMs={(DateTimeOffset.UtcNow - started).TotalMilliseconds:0}");
-                    sync.RecordEvent(
-                        "codex.conversation.dispatch.completed",
-                        jobId,
-                        new Dictionary<string, object?>
-                        {
-                            ["jobId"] = jobId,
-                            ["conversationId"] = id,
-                            ["elapsedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
-                            ["message"] = "Bridge 会话已完成投递，手机将继续刷新回复",
-                        });
+                    sync.RecordTurnJobRunning(jobId, "Bridge 会话已完成投递，正在等待 Windows Codex 完成本轮回复");
                 }
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] [{jobId}] conversation dispatch failed elapsedMs={(DateTimeOffset.UtcNow - started).TotalMilliseconds:0}: {ex}");
-                    sync.RecordEvent(
-                        "codex.conversation.dispatch.failed",
-                        jobId,
-                        new Dictionary<string, object?>
-                        {
-                            ["jobId"] = jobId,
-                            ["conversationId"] = id,
-                            ["elapsedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
-                            ["error"] = ex.Message,
-                            ["message"] = "Bridge 会话投递失败，详情见 Windows 控制台日志",
-                        });
+                    sync.RecordTurnJobFailed(jobId, "Bridge 会话投递失败，详情见 Windows 控制台日志", ex.Message);
                 }
             });
         }
@@ -432,9 +381,10 @@ app.MapPost("/approvals/{id}/resolve", (string id, ResolveApprovalRequest reques
     Results.Ok(conversations.ResolveApproval(id, request.Decision)));
 
 app.MapGet("/audit", (AuditLog audit) => Results.Ok(audit.List()));
-app.MapPost("/commands/preview", (CommandRequest request, CommandService commands) => Results.Ok(commands.Preview(request)));
+app.MapPost("/commands/preview", (CommandRequest request, CommandService commands) =>
+    BridgeEndpointHelpers.SafeBridgeResult(() => Results.Ok(commands.Preview(request))));
 app.MapPost("/commands/run", async (CommandRequest request, CommandService commands, CancellationToken cancellationToken) =>
-    Results.Ok(await commands.RunAsync(request, cancellationToken)));
+    await BridgeEndpointHelpers.SafeBridgeResultAsync(async () => Results.Ok(await commands.RunAsync(request, cancellationToken))));
 
 app.MapHub<BridgeHub>("/hubs/events");
 
@@ -445,6 +395,24 @@ static async Task<IResult> SafeCodexResult(Func<Task<CodexAppServerJsonResponse>
     try
     {
         return Results.Ok(await action());
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Results.Json(new
+        {
+            Ok = false,
+            Available = false,
+            Error = ex.Message,
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or DirectoryNotFoundException)
+    {
+        return Results.Json(new
+        {
+            Ok = false,
+            Available = false,
+            Error = ex.Message,
+        }, statusCode: StatusCodes.Status400BadRequest);
     }
     catch (Exception ex)
     {
@@ -488,7 +456,66 @@ public static class FileEndpointHelpers
         {
             return Results.Ok(action());
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or DirectoryNotFoundException or FileNotFoundException or ArgumentException or KeyNotFoundException)
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new
+            {
+                Ok = false,
+                Error = ex.Message,
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException or ArgumentException or KeyNotFoundException or InvalidOperationException)
+        {
+            return Results.Json(new
+            {
+                Ok = false,
+                Error = ex.Message,
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+}
+
+public static class BridgeEndpointHelpers
+{
+    public static IResult SafeBridgeResult(Func<IResult> action)
+    {
+        try
+        {
+            return action();
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new
+            {
+                Ok = false,
+                Error = ex.Message,
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or DirectoryNotFoundException or InvalidOperationException)
+        {
+            return Results.Json(new
+            {
+                Ok = false,
+                Error = ex.Message,
+            }, statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    public static async Task<IResult> SafeBridgeResultAsync(Func<Task<IResult>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new
+            {
+                Ok = false,
+                Error = ex.Message,
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or DirectoryNotFoundException or InvalidOperationException)
         {
             return Results.Json(new
             {

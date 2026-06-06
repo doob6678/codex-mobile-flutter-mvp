@@ -7,7 +7,6 @@ import 'dashboard_screen.dart';
 import 'file_manager_screen.dart';
 import 'goals_screen.dart';
 import 'pairing_screen.dart';
-import 'projects_screen.dart';
 import 'settings_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -28,7 +27,6 @@ class _AppShellState extends State<AppShell> {
     final screens = [
       PairingScreen(api: widget.api),
       DashboardScreen(api: widget.api, onNavigate: _select),
-      ProjectsScreen(api: widget.api),
       FileManagerScreen(api: widget.api),
       ConversationsScreen(api: widget.api),
       ApprovalsScreen(api: widget.api),
@@ -69,13 +67,8 @@ class _AppShellState extends State<AppShell> {
         label: '概览',
       ),
       _Destination(
-        icon: Icons.folder_outlined,
-        selectedIcon: Icons.folder,
-        label: '项目',
-      ),
-      _Destination(
-        icon: Icons.account_tree_outlined,
-        selectedIcon: Icons.account_tree,
+        icon: Icons.folder_copy_outlined,
+        selectedIcon: Icons.folder_copy,
         label: '文件',
       ),
       _Destination(

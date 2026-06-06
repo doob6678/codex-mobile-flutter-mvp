@@ -9,9 +9,11 @@ var tests = new BridgeServiceTests();
 var cases = new (string Name, Action Test)[]
 {
     ("project whitelist canonicalizes roots and rejects path escape", tests.ProjectWhitelistRejectsPathEscape),
+    ("project store rejects sensitive credential roots", tests.ProjectStoreRejectsSensitiveCredentialRoots),
     ("file service reads text and hashes content", tests.FileServiceReadsAndHashesText),
     ("file service returns empty list for missing directory", tests.FileServiceReturnsEmptyListForMissingDirectory),
     ("file endpoint safety wrapper returns bad request for escaped paths", tests.FileEndpointSafetyWrapperReturnsBadRequestForEscapedPaths),
+    ("bridge endpoint safety wrapper returns forbidden for unauthorized access", tests.BridgeEndpointSafetyWrapperReturnsForbiddenForUnauthorizedAccess),
     ("file service marks markdown files for mobile reading", tests.FileServiceMarksMarkdownFilesForMobileReading),
     ("file service downloads html files as utf8 html", tests.FileServiceDownloadsHtmlFilesAsUtf8Html),
     ("file service downloads binary files with content type", tests.FileServiceDownloadsBinaryFilesWithContentType),
@@ -20,11 +22,16 @@ var cases = new (string Name, Action Test)[]
     ("file patch rejects stale hashes and applies matching content", tests.FilePatchUsesExpectedHash),
     ("pairing token expires and cannot be reused", tests.PairingTokenExpiresAndCannotBeReused),
     ("command service rejects commands outside allowlist", tests.CommandServiceRejectsUnsafeCommands),
+    ("command service rejects shell metacharacter injection", tests.CommandServiceRejectsShellMetacharacterInjection),
+    ("command service requires authorized working directory", tests.CommandServiceRequiresAuthorizedWorkingDirectory),
+    ("command service requires approval before running non-readonly commands", tests.CommandServiceRequiresApprovalBeforeRunningNonReadonlyCommands),
     ("audit log redacts secret values", tests.AuditLogRedactsSecrets),
     ("conversation service stores messages and approvals", tests.ConversationServiceStoresMessagesAndApprovals),
     ("conversation service binds codex thread ids to conversations", tests.ConversationServiceBindsCodexThreadIds),
+    ("conversation service rejects unauthorized working directory", tests.ConversationServiceRejectsUnauthorizedWorkingDirectory),
     ("protocol summary detects generated codex schema assets", tests.ProtocolSummaryDetectsGeneratedAssets),
     ("codex app-server gateway only allows mobile-safe methods", tests.CodexGatewayRejectsUnsafeMethods),
+    ("codex app-server gateway rejects unauthorized thread cwd", tests.CodexGatewayRejectsUnauthorizedThreadCwd),
     ("codex app-server gateway maps config account and thread calls", tests.CodexGatewayMapsCoreCalls),
     ("codex app-server gateway prefers local history for fast mobile thread loading", tests.CodexGatewayPrefersLocalHistoryForFastMobileThreadLoading),
     ("codex app-server gateway serializes thread start and turn input payloads", tests.CodexGatewaySerializesThreadStartAndTurnInputPayloads),
@@ -63,6 +70,10 @@ var cases = new (string Name, Action Test)[]
     ("sync service restores multiple windows goals when bridge starts empty", tests.SyncServiceRestoresMultipleWindowsGoalsWhenBridgeStartsEmpty),
     ("sync service tracks task progress through completion", tests.SyncServiceTracksTaskProgressThroughCompletion),
     ("sync service records codex turn progress events", tests.SyncServiceRecordsCodexTurnProgressEvents),
+    ("sync service tracks codex turn jobs through completion", tests.SyncServiceTracksCodexTurnJobsThroughCompletion),
+    ("sync service binds conversation turn job to codex thread completion", tests.SyncServiceBindsConversationTurnJobToCodexThreadCompletion),
+    ("sync service applies prior terminal notification when binding turn job thread", tests.SyncServiceAppliesPriorTerminalNotificationWhenBindingTurnJobThread),
+    ("sync service marks turn job failed from app-server notification", tests.SyncServiceMarksTurnJobFailedFromAppServerNotification),
     ("sync service records mobile user prompts for thread overlay", tests.SyncServiceRecordsMobileUserPromptsForThreadOverlay),
     ("codex notification mapper assigns active thread to streaming deltas", tests.CodexNotificationMapperAssignsActiveThreadToStreamingDeltas),
     ("codex gateway records mobile visible turn lifecycle", tests.CodexGatewayRecordsMobileVisibleTurnLifecycle),
@@ -126,6 +137,21 @@ internal sealed class BridgeServiceTests
             "path escape must be rejected");
     }
 
+    public void ProjectStoreRejectsSensitiveCredentialRoots()
+    {
+        using var workspace = new TempWorkspace();
+        var codexRoot = workspace.CreateDirectory(".codex");
+        var sshRoot = workspace.CreateDirectory(".ssh");
+        var store = new ProjectStore();
+
+        AssertThrows<UnauthorizedAccessException>(
+            () => store.AddProject("codex secrets", codexRoot),
+            ".codex roots must not be exposed as mobile projects");
+        AssertThrows<UnauthorizedAccessException>(
+            () => store.AddProject("ssh secrets", sshRoot),
+            ".ssh roots must not be exposed as mobile projects");
+    }
+
     public void FileServiceReadsAndHashesText()
     {
         using var workspace = new TempWorkspace();
@@ -161,8 +187,18 @@ internal sealed class BridgeServiceTests
             () => throw new UnauthorizedAccessException("Path escapes the authorized project root."));
 
         AssertTrue(
-            result is IStatusCodeHttpResult status && status.StatusCode == StatusCodes.Status400BadRequest,
-            "escaped path returns 400 instead of an unhandled exception");
+            result is IStatusCodeHttpResult status && status.StatusCode == StatusCodes.Status403Forbidden,
+            "escaped path returns 403 instead of an unhandled exception");
+    }
+
+    public void BridgeEndpointSafetyWrapperReturnsForbiddenForUnauthorizedAccess()
+    {
+        var result = BridgeEndpointHelpers.SafeBridgeResult(
+            () => throw new UnauthorizedAccessException("Command working directory is not authorized."));
+
+        AssertTrue(
+            result is IStatusCodeHttpResult status && status.StatusCode == StatusCodes.Status403Forbidden,
+            "Bridge policy rejections return 403 instead of an unhandled exception");
     }
 
     public void FileServiceMarksMarkdownFilesForMobileReading()
@@ -309,14 +345,67 @@ internal sealed class BridgeServiceTests
     public void CommandServiceRejectsUnsafeCommands()
     {
         var audit = new AuditLog(new ManualClock(DateTimeOffset.UtcNow));
-        var service = new CommandService(audit);
+        using var workspace = new TempWorkspace();
+        var root = workspace.CreateDirectory("project");
+        var projects = new ProjectStore();
+        projects.AddProject("demo", root);
+        var service = new CommandService(audit, projects);
 
-        var safe = service.Preview(new CommandRequest("git status", Environment.CurrentDirectory));
+        var safe = service.Preview(new CommandRequest("git status", root));
         AssertEqual(RiskLevel.ReadOnly, safe.RiskLevel, "git status risk");
 
         AssertThrows<InvalidOperationException>(
-            () => service.Preview(new CommandRequest("Remove-Item -Recurse C:\\temp", Environment.CurrentDirectory)),
+            () => service.Preview(new CommandRequest("Remove-Item -Recurse C:\\temp", root)),
             "unsafe command should be rejected");
+    }
+
+    public void CommandServiceRejectsShellMetacharacterInjection()
+    {
+        var audit = new AuditLog(new ManualClock(DateTimeOffset.UtcNow));
+        using var workspace = new TempWorkspace();
+        var root = workspace.CreateDirectory("project");
+        var projects = new ProjectStore();
+        projects.AddProject("demo", root);
+        var service = new CommandService(audit, projects);
+
+        AssertThrows<InvalidOperationException>(
+            () => service.Preview(new CommandRequest("git status & whoami", root)),
+            "allowlisted command prefix must not permit shell metacharacter injection");
+    }
+
+    public void CommandServiceRequiresAuthorizedWorkingDirectory()
+    {
+        using var workspace = new TempWorkspace();
+        var authorized = workspace.CreateDirectory("project");
+        var outside = workspace.CreateDirectory("outside");
+        var audit = new AuditLog(new ManualClock(DateTimeOffset.UtcNow));
+        var projects = new ProjectStore();
+        projects.AddProject("demo", authorized);
+        var service = new CommandService(audit, projects);
+
+        var safe = service.Preview(new CommandRequest("git status", authorized));
+        AssertEqual(RiskLevel.ReadOnly, safe.RiskLevel, "authorized cwd command is allowed");
+
+        AssertThrows<UnauthorizedAccessException>(
+            () => service.Preview(new CommandRequest("git status", outside)),
+            "command cwd must stay inside an authorized project root");
+    }
+
+    public void CommandServiceRequiresApprovalBeforeRunningNonReadonlyCommands()
+    {
+        using var workspace = new TempWorkspace();
+        var root = workspace.CreateDirectory("project");
+        var audit = new AuditLog(new ManualClock(DateTimeOffset.UtcNow));
+        var projects = new ProjectStore();
+        projects.AddProject("demo", root);
+        var service = new CommandService(audit, projects);
+
+        var preview = service.Preview(new CommandRequest("dotnet test", root));
+        AssertTrue(preview.RequiresApproval, "test commands require approval");
+
+        AssertThrows<UnauthorizedAccessException>(
+            () => service.RunAsync(new CommandRequest("dotnet test", root), CancellationToken.None).GetAwaiter().GetResult(),
+            "non-readonly commands must not execute before an approval is verified");
     }
 
     public void AuditLogRedactsSecrets()
@@ -357,6 +446,24 @@ internal sealed class BridgeServiceTests
         AssertEqual("thread-abc", snapshot.Conversation.CodexThreadId, "snapshot preserves linked thread id");
     }
 
+    public void ConversationServiceRejectsUnauthorizedWorkingDirectory()
+    {
+        using var workspace = new TempWorkspace();
+        var authorized = workspace.CreateDirectory("project");
+        var outside = workspace.CreateDirectory("outside");
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        var projects = new ProjectStore();
+        var project = projects.AddProject("demo", authorized);
+        var service = new ConversationService(clock, projects, enforceProjectRoots: true);
+
+        var conversation = service.Create("demo", project.Id, authorized);
+        AssertEqual(authorized, conversation.WorkingDirectory, "authorized cwd is canonicalized");
+
+        AssertThrows<UnauthorizedAccessException>(
+            () => service.Create("bad", project.Id, outside),
+            "conversation cwd must stay inside the selected authorized project root");
+    }
+
     public void ProtocolSummaryDetectsGeneratedAssets()
     {
         var root = FindRepositoryRoot();
@@ -376,6 +483,25 @@ internal sealed class BridgeServiceTests
         AssertThrows<InvalidOperationException>(
             () => gateway.CallAsync("fs/writeFile", new Dictionary<string, object?>()).GetAwaiter().GetResult(),
             "unsafe app-server method should be rejected");
+    }
+
+    public void CodexGatewayRejectsUnauthorizedThreadCwd()
+    {
+        using var workspace = new TempWorkspace();
+        var authorized = workspace.CreateDirectory("project");
+        var outside = workspace.CreateDirectory("outside");
+        var projects = new ProjectStore();
+        projects.AddProject("demo", authorized);
+        var gateway = new CodexAppServerGateway(
+            new FakeCodexAppServerClient(),
+            new LocalCodexHistoryService(workspace.CreateDirectory("empty-codex")),
+            sync: null,
+            projects,
+            enforceProjectRoots: true);
+
+        AssertThrows<UnauthorizedAccessException>(
+            () => gateway.StartThreadAsync(new StartCodexThreadRequest(outside, "不要让手机把 Codex 开到未授权目录")).GetAwaiter().GetResult(),
+            "thread/start cwd must stay inside an authorized project root");
     }
 
     public void CodexGatewayMapsCoreCalls()
@@ -1302,6 +1428,162 @@ internal sealed class BridgeServiceTests
         var completed = snapshot.Events.Single(evt => evt.Type == "codex.appserver.notification");
         AssertEqual("turn/completed", completed.EntityId, "notification method is entity id");
         AssertEqual("thread-1", completed.Payload["threadId"]?.ToString(), "payload preserves thread id");
+    }
+
+    public void SyncServiceTracksCodexTurnJobsThroughCompletion()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 5, 15, 47, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        service.RecordTurnJobAccepted(
+            "turn_job_1",
+            "thread-1",
+            null,
+            "离开手机页面以后也要继续追踪这个对话的真实完成状态");
+        clock.Advance(TimeSpan.FromSeconds(2));
+        service.RecordTurnJobRunning(
+            "turn_job_1",
+            "Bridge 正在调用 Windows Codex app-server");
+
+        var runningSnapshot = service.GetSnapshot();
+        var running = runningSnapshot.Jobs.Single(job => job.Id == "turn_job_1");
+
+        AssertEqual(CodexTurnJobStatus.Running, running.Status, "job is running");
+        AssertEqual("thread-1", running.ThreadId, "job keeps thread id");
+        AssertEqual("离开手机页面以后也要继续追踪这个对话的真实完成状态", running.PromptPreview, "job keeps prompt preview");
+        AssertTrue(running.StartedAt is not null, "running job has started time");
+        AssertTrue(running.CompletedAt is null, "running job is not completed yet");
+        AssertTrue(running.IsActive, "running job is active for page restore");
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        service.RecordTurnJobRunning(
+            "turn_job_1",
+            "Bridge 已完成投递，正在等待 Windows Codex 完成本轮回复");
+
+        var dispatchedSnapshot = service.GetSnapshot();
+        var dispatched = dispatchedSnapshot.Jobs.Single(job => job.Id == "turn_job_1");
+
+        AssertEqual(CodexTurnJobStatus.Running, dispatched.Status, "dispatch completion still waits for real turn completion");
+        AssertTrue(dispatched.CompletedAt is null, "dispatch completion does not set completed time");
+
+        clock.Advance(TimeSpan.FromSeconds(8));
+        service.RecordEvent(
+            "codex.appserver.notification",
+            "turn/completed",
+            new Dictionary<string, object?>
+            {
+                ["threadId"] = "thread-1",
+                ["method"] = "turn/completed",
+            });
+
+        var completedSnapshot = service.GetSnapshot();
+        var completed = completedSnapshot.Jobs.Single(job => job.Id == "turn_job_1");
+
+        AssertEqual(CodexTurnJobStatus.Completed, completed.Status, "job completed");
+        AssertTrue(completed.CompletedAt is not null, "completed job has completed time");
+        AssertFalse(completed.IsActive, "completed job is no longer active");
+        AssertEqual("Windows Codex 已完成本轮回复", completed.LastMessage, "completion message comes from app-server completion notification");
+    }
+
+    public void SyncServiceBindsConversationTurnJobToCodexThreadCompletion()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 5, 16, 20, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        service.RecordTurnJobAccepted(
+            "conversation_job_1",
+            null,
+            "conv-1",
+            "手机会话首次发送时还没有 Codex thread id");
+        clock.Advance(TimeSpan.FromSeconds(1));
+        service.RecordTurnJobRunning(
+            "conversation_job_1",
+            "Bridge 正在把会话消息投递到 Windows Codex");
+
+        service.BindTurnJobThread("conversation_job_1", "thread-from-conversation");
+        clock.Advance(TimeSpan.FromSeconds(5));
+        service.RecordEvent(
+            "codex.appserver.notification",
+            "turn/completed",
+            new Dictionary<string, object?>
+            {
+                ["threadId"] = "thread-from-conversation",
+                ["method"] = "turn/completed",
+            });
+
+        var completed = service.GetSnapshot().Jobs.Single(job => job.Id == "conversation_job_1");
+
+        AssertEqual("thread-from-conversation", completed.ThreadId, "conversation job is bound to Codex thread id");
+        AssertEqual("conv-1", completed.ConversationId, "conversation id is retained");
+        AssertEqual(CodexTurnJobStatus.Completed, completed.Status, "thread completion completes conversation job");
+    }
+
+    public void SyncServiceAppliesPriorTerminalNotificationWhenBindingTurnJobThread()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 5, 16, 30, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        service.RecordTurnJobAccepted(
+            "conversation_job_race",
+            null,
+            "conv-race",
+            "首次会话创建 thread 时完成通知可能先到");
+        service.RecordTurnJobRunning(
+            "conversation_job_race",
+            "Bridge 正在把会话消息投递到 Windows Codex");
+        clock.Advance(TimeSpan.FromSeconds(2));
+        service.RecordEvent(
+            "codex.appserver.notification",
+            "turn/completed",
+            new Dictionary<string, object?>
+            {
+                ["threadId"] = "thread-race",
+                ["method"] = "turn/completed",
+            });
+
+        var beforeBind = service.GetSnapshot().Jobs.Single(job => job.Id == "conversation_job_race");
+        AssertEqual(CodexTurnJobStatus.Running, beforeBind.Status, "job without thread id cannot match completion yet");
+
+        service.BindTurnJobThread("conversation_job_race", "thread-race");
+        service.RecordTurnJobRunning(
+            "conversation_job_race",
+            "Bridge 会话已完成投递，正在等待 Windows Codex 完成本轮回复");
+        var afterBind = service.GetSnapshot().Jobs.Single(job => job.Id == "conversation_job_race");
+
+        AssertEqual(CodexTurnJobStatus.Completed, afterBind.Status, "terminal completion is not downgraded by later dispatch bookkeeping");
+        AssertTrue(afterBind.CompletedAt is not null, "prior completion timestamp is retained");
+    }
+
+    public void SyncServiceMarksTurnJobFailedFromAppServerNotification()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 5, 16, 40, 0, TimeSpan.Zero));
+        var service = new SyncStateService(clock);
+
+        service.RecordTurnJobAccepted(
+            "turn_job_failed",
+            "thread-failed",
+            null,
+            "这个 turn 如果 Windows Codex 失败，也要真实结束追踪");
+        service.RecordTurnJobRunning(
+            "turn_job_failed",
+            "Bridge 已完成投递，正在等待 Windows Codex 完成本轮回复");
+        clock.Advance(TimeSpan.FromSeconds(3));
+        service.RecordEvent(
+            "codex.appserver.notification",
+            "turn/failed",
+            new Dictionary<string, object?>
+            {
+                ["threadId"] = "thread-failed",
+                ["method"] = "turn/failed",
+                ["message"] = "Windows Codex 本轮处理失败",
+            });
+
+        var failed = service.GetSnapshot().Jobs.Single(job => job.Id == "turn_job_failed");
+
+        AssertEqual(CodexTurnJobStatus.Failed, failed.Status, "job failed from app-server notification");
+        AssertTrue(failed.FailedAt is not null, "failed job has failed time");
+        AssertFalse(failed.IsActive, "failed job is no longer active");
+        AssertEqual("Windows Codex 本轮处理失败", failed.LastMessage, "failure message is retained");
     }
 
     public void SyncServiceRecordsMobileUserPromptsForThreadOverlay()

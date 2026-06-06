@@ -39,7 +39,7 @@ The token represents the paired device, not an OpenAI account. OpenAI and Codex 
 | `POST` | `/pairing/start` | Create a short-lived pairing challenge and QR payload. |
 | `POST` | `/pairing/complete` | Exchange a challenge response for mobile access and refresh tokens. |
 | `GET` | `/network/interfaces` | Report loopback, private LAN, and mesh/VPN bridge URLs while hiding public hosts by default. |
-| `GET` | `/sync/state` | Return the current `/goal`, tracked Codex tasks, and sync events. |
+| `GET` | `/sync/state` | Return the current `/goal`, tracked Codex tasks, tracked turn jobs, and sync events. |
 | `GET` | `/sync/stream` | Push live sync snapshots through server-sent events. |
 | `GET` | `/goal` | Read the current `/goal` objective. |
 | `POST` | `/goal` | Set or replace the current `/goal` objective from mobile. |
@@ -90,7 +90,9 @@ These events are derived from generated app-server notifications such as `thread
 
 ## Real-Time Sync
 
-`/sync/stream` sends the current snapshot immediately, then sends a new snapshot whenever the Bridge receives a goal or task update. This gives the Flutter app bidirectional sync without exposing Codex credentials: mobile can set `/goal` and task intent through protected REST calls, while Windows/Codex-side work reports progress back through the same Bridge state and event stream.
+`/sync/state` includes a structured `jobs` array for mobile-started Codex turns. Each job has `id`, `threadId`, optional `conversationId`, `status` (`pending`, `running`, `completed`, `failed`), prompt preview, timestamps, last message, and optional error. `turn/start` returning from app-server only means the prompt was accepted/dispatched; a job becomes `completed` only after Bridge receives the app-server `turn/completed` notification for the same thread. This lets the phone leave and reopen a conversation page while Bridge continues tracking the real Windows Codex turn.
+
+`/sync/stream` sends the current snapshot immediately, then sends a new snapshot whenever the Bridge receives a goal, task, turn job, or sync-event update. This gives the Flutter app bidirectional sync without exposing Codex credentials: mobile can set `/goal` and task intent through protected REST calls, while Windows/Codex-side work reports progress back through the same Bridge state and event stream.
 
 Temporary network test hosts can be injected with `CODEX_MOBILE_BRIDGE_HOSTS=127.0.0.1,192.168.55.44,100.72.10.9`; public hosts remain hidden unless `CODEX_MOBILE_ALLOW_PUBLIC_BRIDGE=1` is explicitly set.
 
@@ -143,15 +145,16 @@ Use semicolons to provide multiple roots. Paths are still canonicalized and must
 
 `POST /commands/run` requires:
 
-- `projectId`
 - `cwd`
 - `command`
-- `args`
-- `approvalId` when policy requires approval.
+
+Command execution is intentionally narrow: Bridge matches the entire command against fixed executable + argument templates, executes without a shell, and requires `cwd` to be inside an authorized project root. `git status` is the only directly executable read-only template today. Test/build/verification templates such as `dotnet test`, `flutter test`, `flutter analyze`, and `powershell -ExecutionPolicy Bypass -File scripts\verify.ps1` can be previewed but are rejected by `/commands/run` until a verified approval id is implemented.
+
+Security policy rejections return JSON with `403`; invalid ids, missing paths, stale hashes, and malformed requests return handled JSON errors instead of unhandled server failures.
 
 ## Limitations
 
 - Flutter does not directly read Windows drives.
 - Flutter does not receive OpenAI API keys, Codex auth files, or raw secret environment variables.
-- The MVP does not promise that the official Windows Codex App UI will immediately display all third-party Flutter actions.
+- The MVP does not promise that the official Windows Codex App UI will immediately display all third-party Flutter actions. The generated protocol exposes thread/turn operations such as `thread/read`, `thread/resume`, `thread/loaded/list`, `thread/inject_items`, and `turn/start`, but no stable request for forcing an already-open Windows desktop Codex window to reload its visible conversation.
 - Direct public exposure of the Bridge is out of scope; use LAN or VPN/mesh networking first.

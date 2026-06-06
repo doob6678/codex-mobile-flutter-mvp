@@ -625,6 +625,18 @@ void main() {
             'updatedAt': '2026-05-31T11:20:00Z',
           },
         ],
+        'jobs': [
+          {
+            'id': 'turn_job_1',
+            'threadId': 'thread-3',
+            'status': 'running',
+            'promptPreview': '离开手机页面以后也要继续追踪这个对话',
+            'lastMessage': 'Bridge 正在调用 Windows Codex app-server',
+            'createdAt': '2026-05-31T11:08:00Z',
+            'updatedAt': '2026-05-31T11:10:00Z',
+            'startedAt': '2026-05-31T11:09:00Z',
+          },
+        ],
         'events': [
           {
             'type': 'goal.recovered',
@@ -648,6 +660,10 @@ void main() {
       expect(snapshot.tasks.first.status, CodexTaskStatus.running);
       expect(snapshot.tasks.first.progressPercent, 65);
       expect(snapshot.tasks.last.isComplete, isTrue);
+      expect(snapshot.jobs.single.id, 'turn_job_1');
+      expect(snapshot.jobs.single.status, CodexTurnJobStatus.running);
+      expect(snapshot.jobs.single.isActive, isTrue);
+      expect(snapshot.jobs.single.promptPreview, contains('离开手机页面'));
       expect(snapshot.events.map((event) => event.type), [
         'goal.recovered',
         'task.updated',

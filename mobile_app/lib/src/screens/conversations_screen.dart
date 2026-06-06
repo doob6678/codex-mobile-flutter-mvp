@@ -679,14 +679,38 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
       if (!mounted) {
         return;
       }
-      final messagesChanged = _threadMessagesChanged(_detail, refreshed);
+      final activeJob = _activeTurnJobForThread(state, _detail.thread.id);
+      final restored = activeJob == null
+          ? refreshed
+          : _withPendingThreadPrompt(refreshed, activeJob.promptPreview);
+      final messagesChanged = _threadMessagesChanged(_detail, restored);
+      var shouldStartTracking = false;
+      var generation = _sendGeneration;
       setState(() {
         _syncState = state;
-        _detail = refreshed;
-        _statusMessage =
-            _latestProgressMessage(state, threadId: _detail.thread.id) ??
-            _statusMessage;
+        _detail = restored;
+        if (activeJob != null) {
+          _sending = true;
+          _error = null;
+          _pendingPrompt = activeJob.promptPreview;
+          _sendStartedAt = activeJob.startedAt ?? activeJob.createdAt;
+          _statusMessage = activeJob.lastMessage.isNotEmpty
+              ? activeJob.lastMessage
+              : 'Bridge 正在后台追踪 Windows Codex 回复';
+          if (_syncSubscription == null) {
+            generation = ++_sendGeneration;
+            shouldStartTracking = true;
+          }
+        } else {
+          _statusMessage =
+              _latestProgressMessage(state, threadId: _detail.thread.id) ??
+              _statusMessage;
+        }
       });
+      if (shouldStartTracking) {
+        _watchThreadSyncProgress(generation);
+        _trackThreadProgress(generation);
+      }
       if (messagesChanged) {
         _scrollMessagesToEnd();
       }
@@ -784,13 +808,18 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
         threadId: _detail.thread.id,
         since: _sendStartedAt,
       );
+      final activeJob = _activeTurnJobForThread(state, _detail.thread.id);
       setState(() {
         _syncState = state;
-        if (message != null) {
-          _statusMessage = message;
-        }
+        _statusMessage = activeJob?.lastMessage ?? message ?? _statusMessage;
         if (draft.trim().isNotEmpty) {
           _streamingReply = draft;
+        }
+        if (_hasTurnJobForThread(state, _detail.thread.id) &&
+            activeJob == null &&
+            draft.trim().isEmpty) {
+          _sending = false;
+          _pendingPrompt = null;
         }
       });
       _scrollMessagesToEnd();
@@ -813,6 +842,7 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
         final refreshed = await widget.api.readCodexThread(
           threadId: _detail.thread.id,
         );
+        final activeJob = _activeTurnJobForThread(state, _detail.thread.id);
         final historyDraft = _assistantTextAfterPrompt(
           refreshed.messages,
           _pendingPrompt,
@@ -824,24 +854,31 @@ class _ThreadDetailViewState extends State<_ThreadDetailView> {
         }
         setState(() {
           _syncState = state;
-          if (message != null) {
-            _statusMessage = message;
-          }
+          _statusMessage = activeJob?.lastMessage ?? message ?? _statusMessage;
           final displayDraft = draft.trim().isNotEmpty ? draft : historyDraft;
           if (displayDraft.trim().isNotEmpty) {
             _streamingReply = displayDraft;
           }
+          final trackedDetail = activeJob == null
+              ? refreshed
+              : _withPendingThreadPrompt(refreshed, activeJob.promptPreview);
           _detail = displayDraft.trim().isNotEmpty
               ? CodexThreadDetail(
-                  thread: refreshed.thread,
+                  thread: trackedDetail.thread,
                   messages: _withoutAssistantTextAfterPrompt(
-                    refreshed.messages,
+                    trackedDetail.messages,
                     _pendingPrompt,
                     textOf: (message) => message.text,
                     roleOf: (message) => message.role,
                   ),
                 )
-              : refreshed;
+              : trackedDetail;
+          if (_hasTurnJobForThread(state, _detail.thread.id) &&
+              activeJob == null &&
+              _streamingReply == null) {
+            _sending = false;
+            _pendingPrompt = null;
+          }
         });
         _scrollMessagesToEnd();
       } catch (_) {}
@@ -1147,18 +1184,46 @@ class _BridgeConversationDetailViewState
       if (!mounted) {
         return;
       }
-      final messagesChanged = _conversationMessagesChanged(_detail, refreshed);
+      final activeJob = _activeTurnJobForConversation(
+        state,
+        conversationId: _detail.conversation.id,
+        threadId: _detail.conversation.codexThreadId,
+      );
+      final restored = activeJob == null
+          ? refreshed
+          : _withPendingConversationPrompt(refreshed, activeJob.promptPreview);
+      final messagesChanged = _conversationMessagesChanged(_detail, restored);
+      var shouldStartTracking = false;
+      var generation = _sendGeneration;
       setState(() {
         _syncState = state;
-        _detail = refreshed;
-        _statusMessage =
-            _latestProgressMessage(
-              state,
-              conversationId: _detail.conversation.id,
-              threadId: _detail.conversation.codexThreadId,
-            ) ??
-            _statusMessage;
+        _detail = restored;
+        if (activeJob != null) {
+          _sending = true;
+          _error = null;
+          _pendingPrompt = activeJob.promptPreview;
+          _sendStartedAt = activeJob.startedAt ?? activeJob.createdAt;
+          _statusMessage = activeJob.lastMessage.isNotEmpty
+              ? activeJob.lastMessage
+              : 'Bridge 正在后台追踪 Windows Codex 回复';
+          if (_syncSubscription == null) {
+            generation = ++_sendGeneration;
+            shouldStartTracking = true;
+          }
+        } else {
+          _statusMessage =
+              _latestProgressMessage(
+                state,
+                conversationId: _detail.conversation.id,
+                threadId: _detail.conversation.codexThreadId,
+              ) ??
+              _statusMessage;
+        }
       });
+      if (shouldStartTracking) {
+        _watchConversationSyncProgress(generation);
+        _trackConversationProgress(generation);
+      }
       if (messagesChanged) {
         _scrollMessagesToEnd();
       }
@@ -1195,6 +1260,11 @@ class _BridgeConversationDetailViewState
           threadId: _detail.conversation.codexThreadId,
           since: _sendStartedAt,
         );
+        final activeJob = _activeTurnJobForConversation(
+          state,
+          conversationId: _detail.conversation.id,
+          threadId: _detail.conversation.codexThreadId,
+        );
         final refreshed = await widget.api.readConversation(
           conversationId: _detail.conversation.id,
         );
@@ -1209,25 +1279,39 @@ class _BridgeConversationDetailViewState
         }
         setState(() {
           _syncState = state;
-          if (message != null) {
-            _statusMessage = message;
-          }
+          _statusMessage = activeJob?.lastMessage ?? message ?? _statusMessage;
           final displayDraft = draft.trim().isNotEmpty ? draft : historyDraft;
           if (displayDraft.trim().isNotEmpty) {
             _streamingReply = displayDraft;
           }
+          final trackedDetail = activeJob == null
+              ? refreshed
+              : _withPendingConversationPrompt(
+                  refreshed,
+                  activeJob.promptPreview,
+                );
           _detail = displayDraft.trim().isNotEmpty
               ? ConversationDetail(
-                  conversation: refreshed.conversation,
+                  conversation: trackedDetail.conversation,
                   messages: _withoutAssistantTextAfterPrompt(
-                    refreshed.messages,
+                    trackedDetail.messages,
                     _pendingPrompt,
                     textOf: (message) => message.content,
                     roleOf: (message) => message.role,
                   ),
-                  codexThreadError: refreshed.codexThreadError,
+                  codexThreadError: trackedDetail.codexThreadError,
                 )
-              : refreshed;
+              : trackedDetail;
+          if (_hasTurnJobForConversation(
+                state,
+                conversationId: _detail.conversation.id,
+                threadId: _detail.conversation.codexThreadId,
+              ) &&
+              activeJob == null &&
+              _streamingReply == null) {
+            _sending = false;
+            _pendingPrompt = null;
+          }
         });
         _scrollMessagesToEnd();
       } catch (_) {}
@@ -1256,13 +1340,26 @@ class _BridgeConversationDetailViewState
         threadId: _detail.conversation.codexThreadId,
         since: _sendStartedAt,
       );
+      final activeJob = _activeTurnJobForConversation(
+        state,
+        conversationId: _detail.conversation.id,
+        threadId: _detail.conversation.codexThreadId,
+      );
       setState(() {
         _syncState = state;
-        if (message != null) {
-          _statusMessage = message;
-        }
+        _statusMessage = activeJob?.lastMessage ?? message ?? _statusMessage;
         if (draft.trim().isNotEmpty) {
           _streamingReply = draft;
+        }
+        if (_hasTurnJobForConversation(
+              state,
+              conversationId: _detail.conversation.id,
+              threadId: _detail.conversation.codexThreadId,
+            ) &&
+            activeJob == null &&
+            draft.trim().isEmpty) {
+          _sending = false;
+          _pendingPrompt = null;
         }
       });
       _scrollMessagesToEnd();
@@ -2031,6 +2128,135 @@ bool _conversationMessagesChanged(
   }
 
   return false;
+}
+
+CodexTurnJobRecord? _activeTurnJobForThread(
+  CodexSyncSnapshot state,
+  String threadId,
+) {
+  final normalizedThreadId = threadId.trim();
+  if (normalizedThreadId.isEmpty) {
+    return null;
+  }
+
+  final matches = state.jobs
+      .where(
+        (job) =>
+            job.isActive &&
+            (job.threadId?.trim().toLowerCase() ==
+                normalizedThreadId.toLowerCase()),
+      )
+      .toList(growable: false);
+  matches.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+  return matches.isEmpty ? null : matches.first;
+}
+
+bool _hasTurnJobForThread(CodexSyncSnapshot state, String threadId) {
+  final normalizedThreadId = threadId.trim().toLowerCase();
+  return normalizedThreadId.isNotEmpty &&
+      state.jobs.any(
+        (job) => job.threadId?.trim().toLowerCase() == normalizedThreadId,
+      );
+}
+
+CodexTurnJobRecord? _activeTurnJobForConversation(
+  CodexSyncSnapshot state, {
+  required String conversationId,
+  String? threadId,
+}) {
+  final normalizedConversationId = conversationId.trim().toLowerCase();
+  final normalizedThreadId = threadId?.trim().toLowerCase();
+  final matches = state.jobs
+      .where((job) {
+        if (!job.isActive) {
+          return false;
+        }
+        final jobConversationId = job.conversationId?.trim().toLowerCase();
+        if (normalizedConversationId.isNotEmpty &&
+            jobConversationId == normalizedConversationId) {
+          return true;
+        }
+        final jobThreadId = job.threadId?.trim().toLowerCase();
+        return normalizedThreadId != null &&
+            normalizedThreadId.isNotEmpty &&
+            jobThreadId == normalizedThreadId;
+      })
+      .toList(growable: false);
+  matches.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+  return matches.isEmpty ? null : matches.first;
+}
+
+bool _hasTurnJobForConversation(
+  CodexSyncSnapshot state, {
+  required String conversationId,
+  String? threadId,
+}) {
+  final normalizedConversationId = conversationId.trim().toLowerCase();
+  final normalizedThreadId = threadId?.trim().toLowerCase();
+  return state.jobs.any((job) {
+    final jobConversationId = job.conversationId?.trim().toLowerCase();
+    if (normalizedConversationId.isNotEmpty &&
+        jobConversationId == normalizedConversationId) {
+      return true;
+    }
+    final jobThreadId = job.threadId?.trim().toLowerCase();
+    return normalizedThreadId != null &&
+        normalizedThreadId.isNotEmpty &&
+        jobThreadId == normalizedThreadId;
+  });
+}
+
+CodexThreadDetail _withPendingThreadPrompt(
+  CodexThreadDetail detail,
+  String prompt,
+) {
+  final text = prompt.trim();
+  if (text.isEmpty ||
+      detail.messages.any(
+        (message) =>
+            message.role.trim().toLowerCase() == 'user' &&
+            _matchesPromptText(message.text, text),
+      )) {
+    return detail;
+  }
+
+  return CodexThreadDetail(
+    thread: detail.thread,
+    messages: [
+      ...detail.messages,
+      CodexThreadMessage(role: 'user', text: text),
+    ],
+  );
+}
+
+ConversationDetail _withPendingConversationPrompt(
+  ConversationDetail detail,
+  String prompt,
+) {
+  final text = prompt.trim();
+  if (text.isEmpty ||
+      detail.messages.any(
+        (message) =>
+            message.role.trim().toLowerCase() == 'user' &&
+            _matchesPromptText(message.content, text),
+      )) {
+    return detail;
+  }
+
+  return ConversationDetail(
+    conversation: detail.conversation,
+    messages: [
+      ...detail.messages,
+      ConversationMessage(
+        id: 'pending_user_${detail.conversation.id}_${text.hashCode}',
+        conversationId: detail.conversation.id,
+        role: 'user',
+        content: text,
+        createdAt: DateTime.now().toUtc(),
+      ),
+    ],
+    codexThreadError: detail.codexThreadError,
+  );
 }
 
 bool _eventMatches(

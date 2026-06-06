@@ -4,6 +4,8 @@
 
 - Bridge pairing now carries a `challengeId` in addition to the 6-digit code.
 - `/connect` is local-only and `/pairing/start` is guarded against remote access.
+- Bridge command execution is hardened against shell injection: commands must exactly match fixed executable/argument templates, run without `cmd.exe`, and use a working directory inside an authorized project root. Non-read-only command templates are preview-only until a verified approval binding is added.
+- Bridge now rejects sensitive project roots such as `.codex` and `.ssh`, and mobile-started conversations / Codex `thread/start` requests must use an authorized project working directory.
 - File browsing now supports text, markdown, image download, and external open paths.
 - The mobile conversation page is split into thread list + chat pane.
 - The mobile conversation page now shows Windows Codex history and phone-started Windows conversations in one entry point instead of hiding one source behind the other.
@@ -37,6 +39,7 @@
 - 2026-06-03: Fixed iPad/Web refresh using a stale LAN Bridge URL from localStorage. When the app is loaded from `/ipad/` through an HTTPS Cloudflare/LAN origin, Web API calls now resolve to the current page origin first, and QR pairing candidates put that origin before private `http://10.x/192.168.x` URLs.
 - 2026-06-05: Fixed mobile file previews for rendered HTML and PDF. Android/iOS HTML previews now use a WebView instead of source fallback; Android PDF previews render pages through the native `PdfRenderer` channel; iPad/Web PDF previews use a browser `application/pdf` iframe. Refreshed `dist\mobile-android\app-release.apk` and the packaged `/ipad/` static bundle.
 - 2026-06-05: Fixed conversation bubble file links so blue Markdown/HTML/PDF/image references open the rendered file preview directly instead of dumping the user into the file browser. Conversation links and file-list rows now show a loading indicator and ignore duplicate taps while the preview request is in flight, covering the 1-2 second mobile open delay.
+- 2026-06-05: `/sync/state` now exposes structured Codex turn `jobs` with pending/running/completed/failed status, prompt preview, timestamps, thread id, optional conversation id, last message, and error. Thread and Bridge-conversation detail pages restore active jobs after reopening, so leaving the phone page no longer loses the visible state of a real background Windows Codex turn.
 
 ## Findings
 
@@ -148,6 +151,14 @@
 - Finding: the running desktop app owns its own bundled `resources\codex.exe app-server --analytics-default-enabled` process, while Bridge starts separate `codex app-server --listen stdio://` processes. On this Windows build there is no verified supported path to merge Bridge into the already-open desktop app-server or force the desktop UI to live-refresh mobile turns.
 - Applied fix: added `scripts\start-codex-mobile.ps1`, a combined launcher that detects/starts the Windows Codex desktop app through its AppX id and then delegates to `scripts\start-bridge.ps1` with the same `-Urls`, `-DefaultProjects`, and `-NoTunnel` options.
 - Applied fix: `scripts\package.ps1` now copies `start-codex-mobile.ps1` into both Bridge distribution folders, and README/usage docs explain that this is a one-command startup path rather than a shared app-server mode.
+
+### 2026-06-05 structured turn jobs and desktop refresh boundary
+
+- Finding: page-local `_sending` state was still the fragile part. Bridge had mobile-visible turn events, but no first-class job snapshot, so reopening a thread after leaving the phone page could not reliably know whether the background turn was pending, running, completed, or failed.
+- Applied fix: Bridge now stores `CodexTurnJobRecord` objects in `SyncStateService`. `/codex/turns` and `/conversations/{id}/messages` record accepted/running/failed state directly, keep the job running after `turn/start` dispatch returns, and only mark a job completed when the app-server emits `turn/completed` for the same thread. Conversation jobs bind to their Codex thread id and also handle the race where the terminal notification arrives before that binding is written.
+- Applied fix: Flutter parses `CodexSyncSnapshot.jobs`. Thread detail and Bridge-conversation detail pages restore active jobs from `/sync/state`, reinsert the pending USER bubble from `promptPreview`, show the latest Bridge status message, and resume the existing `/sync/stream` plus polling loop without re-sending the prompt.
+- Windows desktop refresh investigation: the generated protocol includes `thread/loaded/list`, `thread/read`, `thread/resume`, `thread/inject_items`, `turn/start`, and `thread/realtime/*`, but no stable `window/reload`, `thread/refresh`, or equivalent request that forces an already-open Windows Codex desktop renderer to reload a visible thread. Current process inspection showed the desktop app owns `resources\codex.exe app-server --analytics-default-enabled`, while Bridge owns separate `codex.exe app-server --listen stdio://` processes. `codex app-server daemon version` still reports Windows daemon lifecycle is unsupported, and `codex app-server proxy` is a Unix-socket proxy surface, so Bridge cannot safely “server-intercept” into the existing desktop app-server on this Windows build.
+- Boundary: the reliable real-time contract is phone <-> Bridge via `/sync/state`, `/sync/stream`, and thread/conversation reads. Desktop Codex may update when its own app-server/session state changes, but this codebase still treats official desktop-window refresh as unsupported rather than depending on an unstable private hook.
 
 ## Verification
 

@@ -6,28 +6,35 @@ namespace CodexMobile.Bridge.Services;
 
 public sealed class CommandService
 {
-    private static readonly (string Prefix, RiskLevel Risk)[] Allowlist =
+    private sealed record CommandTemplate(
+        string Executable,
+        string[] Arguments,
+        RiskLevel Risk);
+
+    private static readonly CommandTemplate[] Allowlist =
     [
-        ("git status", RiskLevel.ReadOnly),
-        ("dotnet test", RiskLevel.Test),
-        ("flutter test", RiskLevel.Test),
-        ("flutter analyze", RiskLevel.Verification),
-        ("powershell -ExecutionPolicy Bypass -File scripts\\verify.ps1", RiskLevel.Verification),
-        ("powershell -ExecutionPolicy Bypass -File scripts/verify.ps1", RiskLevel.Verification),
+        new("git", ["status"], RiskLevel.ReadOnly),
+        new("dotnet", ["test"], RiskLevel.Test),
+        new("flutter", ["test"], RiskLevel.Test),
+        new("flutter", ["analyze"], RiskLevel.Verification),
+        new("powershell", ["-ExecutionPolicy", "Bypass", "-File", "scripts\\verify.ps1"], RiskLevel.Verification),
+        new("powershell", ["-ExecutionPolicy", "Bypass", "-File", "scripts/verify.ps1"], RiskLevel.Verification),
     ];
 
     private readonly AuditLog audit;
+    private readonly ProjectStore projects;
 
-    public CommandService(AuditLog audit)
+    public CommandService(AuditLog audit, ProjectStore? projects = null)
     {
         this.audit = audit;
+        this.projects = projects ?? new ProjectStore();
     }
 
     public CommandPreview Preview(CommandRequest request)
     {
-        var command = Normalize(request.Command);
-        var match = Allowlist.FirstOrDefault(item => command.StartsWith(item.Prefix, StringComparison.OrdinalIgnoreCase));
-        if (match.Prefix is null)
+        var parts = SplitCommand(request.Command);
+        var match = Allowlist.FirstOrDefault(item => CommandEquals(item, parts));
+        if (match is null)
         {
             throw new InvalidOperationException("Command is not in the mobile bridge allowlist.");
         }
@@ -38,15 +45,24 @@ public sealed class CommandService
             throw new DirectoryNotFoundException(cwd);
         }
 
+        EnsureAuthorizedWorkingDirectory(cwd);
+
+        var command = FormatCommand(match);
         return new CommandPreview(command, cwd, match.Risk, RequiresApproval: match.Risk != RiskLevel.ReadOnly);
     }
 
     public async Task<CommandRunResult> RunAsync(CommandRequest request, CancellationToken cancellationToken)
     {
         var preview = Preview(request);
+        if (preview.RequiresApproval)
+        {
+            throw new UnauthorizedAccessException("Command requires an approved Bridge approval before execution.");
+        }
+
         audit.Record("command.preview", $"{preview.Command} cwd={preview.WorkingDirectory}");
 
-        var startInfo = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{preview.Command}\"")
+        var template = Allowlist.Single(item => string.Equals(FormatCommand(item), preview.Command, StringComparison.OrdinalIgnoreCase));
+        var startInfo = new ProcessStartInfo(template.Executable)
         {
             WorkingDirectory = preview.WorkingDirectory,
             RedirectStandardOutput = true,
@@ -56,6 +72,10 @@ public sealed class CommandService
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
+        foreach (var argument in template.Arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start command.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
@@ -76,9 +96,48 @@ public sealed class CommandService
         return result;
     }
 
-    private static string Normalize(string command)
+    private void EnsureAuthorizedWorkingDirectory(string cwd)
     {
-        return string.Join(' ', command.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
+        if (projects.ListProjects().Any(project => IsSameOrChildPath(cwd, project.RootPath)))
+        {
+            return;
+        }
+
+        throw new UnauthorizedAccessException("Command working directory is not inside an authorized project root.");
+    }
+
+    private static bool CommandEquals(CommandTemplate template, IReadOnlyList<string> parts)
+    {
+        if (parts.Count != template.Arguments.Length + 1)
+        {
+            return false;
+        }
+
+        return string.Equals(parts[0], template.Executable, StringComparison.OrdinalIgnoreCase)
+            && template.Arguments.SequenceEqual(parts.Skip(1), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string FormatCommand(CommandTemplate template)
+    {
+        return string.Join(' ', new[] { template.Executable }.Concat(template.Arguments));
+    }
+
+    private static string[] SplitCommand(string command)
+    {
+        return (command ?? "")
+            .Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static bool IsSameOrChildPath(string candidate, string rootPath)
+    {
+        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(fullCandidate, root, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return fullCandidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string TrimOutput(string output)

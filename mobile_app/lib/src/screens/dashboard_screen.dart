@@ -32,34 +32,29 @@ class DashboardScreen extends StatelessWidget {
                 runSpacing: 12,
                 children: [
                   _SurfaceButton(
-                    label: '项目',
-                    icon: Icons.folder_outlined,
-                    onTap: () => onNavigate(2),
-                  ),
-                  _SurfaceButton(
                     label: '文件',
-                    icon: Icons.account_tree_outlined,
-                    onTap: () => onNavigate(3),
+                    icon: Icons.folder_copy_outlined,
+                    onTap: () => onNavigate(2),
                   ),
                   _SurfaceButton(
                     label: '对话',
                     icon: Icons.chat_bubble_outline,
-                    onTap: () => onNavigate(4),
+                    onTap: () => onNavigate(3),
                   ),
                   _SurfaceButton(
                     label: '审批',
                     icon: Icons.verified_user_outlined,
-                    onTap: () => onNavigate(5),
+                    onTap: () => onNavigate(4),
                   ),
                   _SurfaceButton(
                     label: '目标',
                     icon: Icons.track_changes_outlined,
-                    onTap: () => onNavigate(6),
+                    onTap: () => onNavigate(5),
                   ),
                   _SurfaceButton(
                     label: '设置',
                     icon: Icons.settings_outlined,
-                    onTap: () => onNavigate(7),
+                    onTap: () => onNavigate(6),
                   ),
                 ],
               ),
@@ -80,7 +75,10 @@ class DashboardScreen extends StatelessWidget {
                       securityStatus: data?.securityStatus,
                       network: data?.network,
                     ),
-                    _GoalCard(state: data?.syncState),
+                    _GoalCard(
+                      state: data?.syncState,
+                      onOpenGoals: () => onNavigate(5),
+                    ),
                     _TaskProgressCard(state: data?.syncState),
                   ];
                   if (!wide) {
@@ -240,14 +238,20 @@ class _SecurityCard extends StatelessWidget {
 }
 
 class _GoalCard extends StatelessWidget {
-  const _GoalCard({required this.state});
+  const _GoalCard({required this.state, required this.onOpenGoals});
 
   final CodexSyncSnapshot? state;
+  final VoidCallback onOpenGoals;
 
   @override
   Widget build(BuildContext context) {
     final goal = state?.goal;
     final goals = state?.goals ?? const <GoalRecord>[];
+    final visibleGoals = goals.isNotEmpty
+        ? goals
+        : goal == null
+        ? const <GoalRecord>[]
+        : [goal];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -261,20 +265,54 @@ class _GoalCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text('/goal', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
-            Text(
-              goal?.objective ?? '还没有同步到 /goal。',
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            if (goal != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                '${goal.status.label} · ${goal.source}${goals.length > 1 ? " · 共 ${goals.length} 个目标" : ""}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B7280)),
-              ),
+            if (visibleGoals.isEmpty)
+              const Text('还没有同步到 /goal。')
+            else ...[
+              for (final item in visibleGoals.take(3))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: const Color(0xFFF9FAFB),
+                    borderRadius: BorderRadius.circular(8),
+                    child: InkWell(
+                      onTap: onOpenGoals,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.objective,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyLarge,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${item.status.label} · ${item.source}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: const Color(0xFF6B7280)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (goals.length > 1) ...[
+                TextButton(
+                  onPressed: onOpenGoals,
+                  child: Text('查看全部 ${goals.length} 个目标'),
+                ),
+              ],
             ],
           ],
         ),
@@ -345,7 +383,14 @@ class _PanelHeader extends StatelessWidget {
       children: [
         Icon(icon),
         const SizedBox(width: 10),
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
       ],
     );
   }

@@ -35,7 +35,7 @@ void main() {
 
     expect(find.text('配对'), findsWidgets);
     expect(find.text('概览'), findsWidgets);
-    expect(find.text('项目'), findsWidgets);
+    expect(find.text('项目'), findsNothing);
     expect(find.text('文件'), findsWidgets);
     expect(find.text('对话'), findsWidgets);
     expect(find.text('审批'), findsWidgets);
@@ -206,6 +206,31 @@ void main() {
     expect(find.text('90%'), findsWidgets);
   });
 
+  testWidgets(
+    'overview goal monitor shows multiple goals and opens goals page',
+    (tester) async {
+      await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('打开菜单'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('概览').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('实现手机端查看 Codex 任务进度和完成情况'), findsOneWidget);
+      expect(find.text('真实同步 Windows Codex 对话发送和回复'), findsOneWidget);
+      expect(find.text('查看全部 2 个目标'), findsOneWidget);
+
+      await tester.tap(find.text('查看全部 2 个目标'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('/goal 目标'), findsOneWidget);
+      expect(find.text('实现手机端查看 Codex 任务进度和完成情况'), findsOneWidget);
+      expect(find.text('真实同步 Windows Codex 对话发送和回复'), findsOneWidget);
+    },
+  );
+
   testWidgets('navigation exposes all MVP surfaces', (tester) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
@@ -215,7 +240,7 @@ void main() {
 
     expect(find.text('配对'), findsWidgets);
     expect(find.text('概览'), findsWidgets);
-    expect(find.text('项目'), findsWidgets);
+    expect(find.text('项目'), findsNothing);
     expect(find.text('文件'), findsWidgets);
     expect(find.text('对话'), findsWidgets);
     expect(find.text('审批'), findsWidgets);
@@ -223,27 +248,31 @@ void main() {
     expect(find.text('设置'), findsWidgets);
   });
 
-  testWidgets('project and file lists render bridge data', (tester) async {
+  testWidgets('file browser combines projects and hides folder contents', (
+    tester,
+  ) async {
     await tester.pumpWidget(CodexMobileApp(api: _FakeApi()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('打开菜单'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('项目').last);
+    await tester.tap(find.text('文件').last);
     await tester.pumpAndSettle();
     expect(find.text('codex_mobile_app'), findsOneWidget);
     expect(find.text(r'C:\work\codex_mobile_app'), findsOneWidget);
+    expect(find.text('文件夹 (1)'), findsOneWidget);
+    expect(find.text('00-总目录.md'), findsOneWidget);
+    expect(find.text('main.dart'), findsNothing);
 
-    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.tap(find.text('文件夹 (1)'));
     await tester.pumpAndSettle();
+    expect(find.text('lib'), findsOneWidget);
 
-    await tester.tap(find.text('文件').last);
-    await tester.pumpAndSettle();
-    expect(find.text('lib'), findsWidgets);
     await tester.tap(find.text('lib').first);
     await tester.pumpAndSettle();
     expect(find.text('main.dart'), findsOneWidget);
+    expect(find.text('00-总目录.md'), findsNothing);
 
     await tester.tap(find.text('main.dart'));
     await tester.pumpAndSettle();
@@ -522,6 +551,62 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets('thread detail restores active Bridge turn job after reopening', (
+    tester,
+  ) async {
+    final api = _FakeApi();
+    api.activeJobs = [
+      CodexTurnJobRecord(
+        id: 'turn_job_reopen',
+        threadId: 'thread-3',
+        status: CodexTurnJobStatus.running,
+        promptPreview: '离开页面后继续追踪这个真实对话',
+        lastMessage: 'Bridge 正在调用 Windows Codex app-server',
+        createdAt: DateTime.utc(2026, 6, 5, 7, 47),
+        updatedAt: DateTime.utc(2026, 6, 5, 7, 48),
+        startedAt: DateTime.utc(2026, 6, 5, 7, 48),
+      ),
+    ];
+    await tester.pumpWidget(CodexMobileApp(api: api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('对话').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('codex_mobile_app'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('实现调研目标并测试'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.text('离开页面后继续追踪这个真实对话'), findsOneWidget);
+    expect(
+      find.text('正在等待 Windows Codex 回复...', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('Bridge 正在调用 Windows Codex app-server'), findsOneWidget);
+    expect(find.byTooltip('发送到 Windows Codex'), findsOneWidget);
+
+    api.activeJobs = [
+      CodexTurnJobRecord(
+        id: 'turn_job_reopen',
+        threadId: 'thread-3',
+        status: CodexTurnJobStatus.completed,
+        promptPreview: '离开页面后继续追踪这个真实对话',
+        lastMessage: 'Windows Codex 已完成本轮回复',
+        createdAt: DateTime.utc(2026, 6, 5, 7, 47),
+        updatedAt: DateTime.utc(2026, 6, 5, 7, 50),
+        startedAt: DateTime.utc(2026, 6, 5, 7, 48),
+        completedAt: DateTime.utc(2026, 6, 5, 7, 50),
+      ),
+    ];
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+  });
 
   testWidgets('thread detail passively refreshes Windows-side messages', (
     tester,
@@ -887,6 +972,7 @@ class _FakeApi implements CodexMobileApi {
   String? assistantDuringHeldTurn;
   List<CodexThreadMessage> externalThreadMessages = const [];
   List<CodexSyncEvent> syncEvents = const [];
+  List<CodexTurnJobRecord> activeJobs = const [];
   StreamController<CodexSyncSnapshot>? _syncStreamController;
   final Set<String> _alwaysFailBridgeUrls = <String>{};
   String? _heldReadFilePath;
@@ -1377,6 +1463,7 @@ class _FakeApi implements CodexMobileApi {
         updatedAt: DateTime.utc(2026),
       ),
     ],
+    jobs: activeJobs,
     events: syncEvents,
     updatedAt: DateTime.utc(2026),
   );

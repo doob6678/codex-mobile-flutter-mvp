@@ -212,10 +212,36 @@ public sealed record MobileUserMessageRecord(
     string? JobId,
     DateTimeOffset CreatedAt);
 
+public enum CodexTurnJobStatus
+{
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+public sealed record CodexTurnJobRecord(
+    string Id,
+    string? ThreadId,
+    string? ConversationId,
+    CodexTurnJobStatus Status,
+    string PromptPreview,
+    string LastMessage,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? FailedAt,
+    string? Error)
+{
+    public bool IsActive => Status is CodexTurnJobStatus.Pending or CodexTurnJobStatus.Running;
+}
+
 public sealed record CodexSyncSnapshot(
     GoalRecord? Goal,
     IReadOnlyList<GoalRecord> Goals,
     IReadOnlyList<CodexTaskRecord> Tasks,
+    IReadOnlyList<CodexTurnJobRecord> Jobs,
     IReadOnlyList<CodexSyncEvent> Events,
     DateTimeOffset UpdatedAt);
 

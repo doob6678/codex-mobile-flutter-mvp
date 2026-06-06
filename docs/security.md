@@ -41,18 +41,21 @@ Commands are not arbitrary shell access. The Bridge enforces:
 
 - Allowlisted command templates.
 - Fixed or validated `cwd` under an authorized project.
+- Exact executable + argument matching; commands are not executed through `cmd.exe` or another shell.
+- Shell metacharacter suffixes such as `&`, `|`, `>`, and extra trailing arguments are rejected because they no longer match an allowlisted template.
 - Argument validation.
 - Timeout and output-size limits.
 - Environment variable redaction.
 - Approval before writes, installs, network-heavy operations, dangerous commands, or policy escalations.
 - Deny-by-default handling for destructive system operations.
+- The current implementation only executes non-approval read-only templates directly. Test/build/verification templates are previewable but require a future verified approval binding before `/commands/run` can execute them.
 
 Recommended policy levels:
 
 | Level | Examples | Default action |
 |---|---|---|
 | Read-only | `git status`, directory listing, safe metadata reads | Allow or low-friction approval. |
-| Test/build | `dotnet test`, `flutter analyze`, `flutter test` | Allowlist, project scoped. |
+| Test/build | `dotnet test`, `flutter analyze`, `flutter test` | Allowlist, project scoped, approval required before execution. |
 | Write | Patch application, generated file writes | Require diff approval. |
 | Risky | Dependency installs, deletes, moves, broad formatting, network calls | Strong approval. |
 | Forbidden | Disk formatting, system-directory writes, secret exfiltration | Deny. |

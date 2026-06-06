@@ -10,6 +10,8 @@ extension GoalStatusLabel on GoalStatus {
 
 enum CodexTaskStatus { pending, running, blocked, completed, failed }
 
+enum CodexTurnJobStatus { pending, running, completed, failed }
+
 class GoalRecord {
   const GoalRecord({
     required this.id,
@@ -80,18 +82,71 @@ class CodexTaskRecord {
   }
 }
 
+class CodexTurnJobRecord {
+  const CodexTurnJobRecord({
+    required this.id,
+    required this.status,
+    required this.promptPreview,
+    required this.lastMessage,
+    required this.createdAt,
+    required this.updatedAt,
+    this.threadId,
+    this.conversationId,
+    this.startedAt,
+    this.completedAt,
+    this.failedAt,
+    this.error,
+  });
+
+  final String id;
+  final String? threadId;
+  final String? conversationId;
+  final CodexTurnJobStatus status;
+  final String promptPreview;
+  final String lastMessage;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final DateTime? failedAt;
+  final String? error;
+
+  bool get isActive =>
+      status == CodexTurnJobStatus.pending ||
+      status == CodexTurnJobStatus.running;
+
+  factory CodexTurnJobRecord.fromJson(Map<String, Object?> json) {
+    return CodexTurnJobRecord(
+      id: json['id'] as String? ?? '',
+      threadId: _readNullableString(json['threadId']),
+      conversationId: _readNullableString(json['conversationId']),
+      status: _turnJobStatus(json['status'] as String?),
+      promptPreview: json['promptPreview'] as String? ?? '',
+      lastMessage: json['lastMessage'] as String? ?? '',
+      createdAt: _readDate(json['createdAt']),
+      updatedAt: _readDate(json['updatedAt']),
+      startedAt: _readNullableDate(json['startedAt']),
+      completedAt: _readNullableDate(json['completedAt']),
+      failedAt: _readNullableDate(json['failedAt']),
+      error: _readNullableString(json['error']),
+    );
+  }
+}
+
 class CodexSyncSnapshot {
   const CodexSyncSnapshot({
     required this.tasks,
     required this.updatedAt,
     this.events = const [],
     this.goals = const [],
+    this.jobs = const [],
     this.goal,
   });
 
   final GoalRecord? goal;
   final List<GoalRecord> goals;
   final List<CodexTaskRecord> tasks;
+  final List<CodexTurnJobRecord> jobs;
   final List<CodexSyncEvent> events;
   final DateTime updatedAt;
 
@@ -99,6 +154,7 @@ class CodexSyncSnapshot {
     final rawGoal = json['goal'];
     final rawGoals = json['goals'];
     final rawTasks = json['tasks'];
+    final rawJobs = json['jobs'];
     final rawEvents = json['events'];
     final goals = rawGoals is List<Object?>
         ? rawGoals
@@ -118,6 +174,12 @@ class CodexSyncSnapshot {
           ? rawTasks
                 .whereType<Map<String, Object?>>()
                 .map(CodexTaskRecord.fromJson)
+                .toList(growable: false)
+          : const [],
+      jobs: rawJobs is List<Object?>
+          ? rawJobs
+                .whereType<Map<String, Object?>>()
+                .map(CodexTurnJobRecord.fromJson)
                 .toList(growable: false)
           : const [],
       events: rawEvents is List<Object?>
@@ -179,6 +241,28 @@ CodexTaskStatus _taskStatus(String? value) {
     'failed' => CodexTaskStatus.failed,
     _ => CodexTaskStatus.pending,
   };
+}
+
+CodexTurnJobStatus _turnJobStatus(String? value) {
+  return switch (value?.toLowerCase()) {
+    'running' => CodexTurnJobStatus.running,
+    'completed' => CodexTurnJobStatus.completed,
+    'failed' => CodexTurnJobStatus.failed,
+    _ => CodexTurnJobStatus.pending,
+  };
+}
+
+DateTime _readDate(Object? value) {
+  return DateTime.tryParse(value?.toString() ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+}
+
+DateTime? _readNullableDate(Object? value) {
+  final text = value?.toString();
+  if (text == null || text.trim().isEmpty) {
+    return null;
+  }
+  return DateTime.tryParse(text);
 }
 
 String? _readNullableString(Object? value) {

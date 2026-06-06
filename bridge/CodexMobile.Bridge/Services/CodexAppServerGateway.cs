@@ -49,15 +49,21 @@ public sealed class CodexAppServerGateway
     private readonly ICodexAppServerClient client;
     private readonly LocalCodexHistoryService localHistory;
     private readonly SyncStateService? sync;
+    private readonly ProjectStore? projects;
+    private readonly bool enforceProjectRoots;
 
     public CodexAppServerGateway(
         ICodexAppServerClient client,
         LocalCodexHistoryService? localHistory = null,
-        SyncStateService? sync = null)
+        SyncStateService? sync = null,
+        ProjectStore? projects = null,
+        bool enforceProjectRoots = false)
     {
         this.client = client;
         this.localHistory = localHistory ?? new LocalCodexHistoryService();
         this.sync = sync;
+        this.projects = projects;
+        this.enforceProjectRoots = enforceProjectRoots;
     }
 
     public IReadOnlyCollection<string> AllowedMethodNames => AllowedMethods;
@@ -104,9 +110,10 @@ public sealed class CodexAppServerGateway
 
     public Task<CodexAppServerJsonResponse> StartThreadAsync(StartCodexThreadRequest request, CancellationToken cancellationToken = default)
     {
+        var workingDirectory = ResolveAuthorizedWorkingDirectory(request.WorkingDirectory);
         var parameters = new Dictionary<string, object?>
         {
-            ["cwd"] = request.WorkingDirectory,
+            ["cwd"] = workingDirectory,
             ["input"] = CreateTextInput(request.Prompt),
             ["model"] = request.Model,
             ["approvalPolicy"] = request.ApprovalPolicy,
@@ -279,6 +286,39 @@ public sealed class CodexAppServerGateway
     {
         var redacted = ApiKeyAssignment.Replace(message, "OPENAI_API_KEY=[REDACTED]");
         return SecretToken.Replace(redacted, "[REDACTED]");
+    }
+
+    private string ResolveAuthorizedWorkingDirectory(string workingDirectory)
+    {
+        var fullPath = Path.GetFullPath(string.IsNullOrWhiteSpace(workingDirectory) ? "." : workingDirectory);
+        if (!enforceProjectRoots)
+        {
+            return fullPath;
+        }
+
+        if (projects is null)
+        {
+            throw new InvalidOperationException("Project store is required when Codex cwd enforcement is enabled.");
+        }
+
+        if (projects.ListProjects().Any(project => IsSameOrChildPath(fullPath, project.RootPath)))
+        {
+            return fullPath;
+        }
+
+        throw new UnauthorizedAccessException("Codex thread working directory is not inside an authorized project root.");
+    }
+
+    private static bool IsSameOrChildPath(string candidate, string rootPath)
+    {
+        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(fullCandidate, root, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return fullCandidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static object[] CreateTextInput(string prompt)

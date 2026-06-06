@@ -15,6 +15,11 @@ public sealed class ProjectStore
         }
 
         var canonicalRoot = CanonicalizeRoot(rootPath);
+        if (IsSensitiveRoot(canonicalRoot))
+        {
+            throw new UnauthorizedAccessException("Sensitive credential or system roots cannot be exposed through the mobile bridge.");
+        }
+
         var project = new ProjectRecord(NewId("project"), name.Trim(), canonicalRoot, DateTimeOffset.UtcNow);
 
         lock (gate)
