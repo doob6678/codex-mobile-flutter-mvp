@@ -637,6 +637,10 @@ class _CameraQrScannerScreenState extends State<_CameraQrScannerScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('扫描 Bridge QR')),
       body: MobileScanner(
+        errorBuilder: (context, error) => _CameraScannerErrorView(
+          message: cameraScannerErrorMessage(error),
+          onClose: () => Navigator.of(context).pop(),
+        ),
         onDetect: (capture) {
           if (_handled) {
             return;
@@ -652,6 +656,74 @@ class _CameraQrScannerScreenState extends State<_CameraQrScannerScreen> {
           _handled = true;
           Navigator.of(context).pop(values.first);
         },
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+String cameraScannerErrorMessage(MobileScannerException error) {
+  final detailCode = error.errorDetails?.code?.trim();
+  final detailMessage = error.errorDetails?.message?.trim();
+  final detailSuffix = [
+    if (detailCode != null && detailCode.isNotEmpty) detailCode,
+    if (detailMessage != null &&
+        detailMessage.isNotEmpty &&
+        detailMessage != detailCode)
+      detailMessage,
+  ].join(' / ');
+  final suffix = detailSuffix.isEmpty ? '' : '（$detailSuffix）';
+
+  switch (error.errorCode) {
+    case MobileScannerErrorCode.permissionDenied:
+      return '相机权限被拒绝$suffix。请在系统设置里允许相机权限，或者改用下方粘贴 QR 内容。';
+    case MobileScannerErrorCode.unsupported:
+      return '当前设备不支持相机扫码$suffix。请改用下方粘贴 QR 内容。';
+    case MobileScannerErrorCode.controllerAlreadyInitialized:
+    case MobileScannerErrorCode.controllerDisposed:
+    case MobileScannerErrorCode.controllerUninitialized:
+    case MobileScannerErrorCode.controllerInitializing:
+    case MobileScannerErrorCode.controllerNotAttached:
+    case MobileScannerErrorCode.genericError:
+      return '相机扫码启动失败$suffix。请返回后改用下方粘贴 QR 内容，或稍后重试。';
+  }
+}
+
+class _CameraScannerErrorView extends StatelessWidget {
+  const _CameraScannerErrorView({
+    required this.message,
+    required this.onClose,
+  });
+
+  final String message;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.camera_alt_outlined,
+              size: 52,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: onClose,
+              child: const Text('返回'),
+            ),
+          ],
+        ),
       ),
     );
   }

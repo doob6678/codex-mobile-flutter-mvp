@@ -19,6 +19,9 @@ import 'package:mobile_app/src/models/sync_state.dart';
 import 'package:mobile_app/src/screens/file_preview_screen.dart';
 import 'package:mobile_app/src/screens/conversations_screen.dart'
     show linkifyConversationFileReferences;
+import 'package:mobile_app/src/screens/pairing_screen.dart'
+    show cameraScannerErrorMessage;
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 void main() {
   testWidgets('top menu button opens labeled drawer navigation', (
@@ -174,6 +177,33 @@ void main() {
     expect(
       find.textContaining('CODEX_MOBILE_EXTERNAL_BRIDGE_URLS'),
       findsOneWidget,
+    );
+  });
+
+  test('camera scanner maps plugin errors to readable messages', () {
+    expect(
+      cameraScannerErrorMessage(
+        const MobileScannerException(
+          errorCode: MobileScannerErrorCode.permissionDenied,
+        ),
+      ),
+      contains('相机权限被拒绝'),
+    );
+    expect(
+      cameraScannerErrorMessage(
+        const MobileScannerException(
+          errorCode: MobileScannerErrorCode.unsupported,
+        ),
+      ),
+      contains('不支持相机扫码'),
+    );
+    expect(
+      cameraScannerErrorMessage(
+        const MobileScannerException(
+          errorCode: MobileScannerErrorCode.genericError,
+        ),
+      ),
+      contains('相机扫码启动失败'),
     );
   });
 
